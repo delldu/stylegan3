@@ -12,6 +12,7 @@ Only works on 2D images and assumes
 `mode='bilinear'`, `padding_mode='zeros'`, `align_corners=False`."""
 
 import torch
+import pdb
 
 # pylint: disable=redefined-builtin
 # pylint: disable=arguments-differ
@@ -24,6 +25,8 @@ enabled = False  # Enable the custom op by setting this to true.
 #----------------------------------------------------------------------------
 
 def grid_sample(input, grid):
+    pdb.set_trace()
+    
     if _should_use_custom_op():
         return _GridSample2dForward.apply(input, grid)
     return torch.nn.functional.grid_sample(input=input, grid=grid, mode='bilinear', padding_mode='zeros', align_corners=False)

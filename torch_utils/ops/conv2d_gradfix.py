@@ -20,6 +20,7 @@ import torch
 
 enabled = False                     # Enable the custom op by setting this to true.
 weight_gradients_disabled = False   # Forcefully disable computation of gradients with respect to the weights.
+import pdb
 
 @contextlib.contextmanager
 def no_weight_gradients(disable=True):
@@ -33,11 +34,15 @@ def no_weight_gradients(disable=True):
 #----------------------------------------------------------------------------
 
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
+    # input.size() -- torch.Size([1, 1024, 36, 36])
+    # _should_use_custom_op(input) -- False
     if _should_use_custom_op(input):
         return _conv2d_gradfix(transpose=False, weight_shape=weight.shape, stride=stride, padding=padding, output_padding=0, dilation=dilation, groups=groups).apply(input, weight, bias)
     return torch.nn.functional.conv2d(input=input, weight=weight, bias=bias, stride=stride, padding=padding, dilation=dilation, groups=groups)
 
 def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
+    pdb.set_trace()
+    
     if _should_use_custom_op(input):
         return _conv2d_gradfix(transpose=True, weight_shape=weight.shape, stride=stride, padding=padding, output_padding=output_padding, groups=groups, dilation=dilation).apply(input, weight, bias)
     return torch.nn.functional.conv_transpose2d(input=input, weight=weight, bias=bias, stride=stride, padding=padding, output_padding=output_padding, groups=groups, dilation=dilation)

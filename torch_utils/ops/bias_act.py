@@ -15,6 +15,7 @@ import dnnlib
 
 from .. import custom_ops
 from .. import misc
+import pdb
 
 #----------------------------------------------------------------------------
 
@@ -83,6 +84,7 @@ def bias_act(x, b=None, dim=1, act='linear', alpha=None, gain=None, clamp=None, 
     assert impl in ['ref', 'cuda']
     if impl == 'cuda' and x.device.type == 'cuda' and _init():
         return _bias_act_cuda(dim=dim, act=act, alpha=alpha, gain=gain, clamp=clamp).apply(x, b)
+    # pdb.set_trace() ==> Here ?
     return _bias_act_ref(x=x, b=b, dim=dim, act=act, alpha=alpha, gain=gain, clamp=clamp)
 
 #----------------------------------------------------------------------------

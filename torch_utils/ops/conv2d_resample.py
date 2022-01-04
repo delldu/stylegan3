@@ -15,6 +15,7 @@ from . import conv2d_gradfix
 from . import upfirdn2d
 from .upfirdn2d import _parse_padding
 from .upfirdn2d import _get_filter_size
+import pdb
 
 #----------------------------------------------------------------------------
 
@@ -138,6 +139,9 @@ def conv2d_resample(x, w, f=None, up=1, down=1, padding=0, groups=1, flip_weight
     x = _conv2d_wrapper(x=x, w=w, groups=groups, flip_weight=flip_weight)
     if down > 1:
         x = upfirdn2d.upfirdn2d(x=x, f=f, down=down, flip_filter=flip_filter)
+
+    pdb.set_trace()
+    
     return x
 
 #----------------------------------------------------------------------------

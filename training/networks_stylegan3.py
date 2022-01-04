@@ -11,7 +11,7 @@
 
 import numpy as np
 import scipy.signal
-import scipy.optimize
+# import scipy.optimize
 import torch
 from torch_utils import misc
 from torch_utils import persistence
@@ -22,7 +22,7 @@ import pdb
 
 #----------------------------------------------------------------------------
 
-@misc.profiled_function
+# @misc.profiled_function
 def modulated_conv2d(
     x,                  # Input tensor: [batch_size, in_channels, in_height, in_width]
     w,                  # Weight tensor: [out_channels, in_channels, kernel_height, kernel_width]
@@ -31,12 +31,13 @@ def modulated_conv2d(
     padding     = 0,    # Padding: int or [padH, padW]
     input_gain  = None, # Optional scale factors for the input channels: [], [in_channels], or [batch_size, in_channels]
 ):
-    with misc.suppress_tracer_warnings(): # this value will be treated as a constant
-        batch_size = int(x.shape[0])
+    # with misc.suppress_tracer_warnings(): # this value will be treated as a constant
+    #     batch_size = int(x.shape[0])
+    batch_size = int(x.shape[0])
     out_channels, in_channels, kh, kw = w.shape
-    misc.assert_shape(w, [out_channels, in_channels, kh, kw]) # [OIkk]
-    misc.assert_shape(x, [batch_size, in_channels, None, None]) # [NIHW]
-    misc.assert_shape(s, [batch_size, in_channels]) # [NI]
+    # misc.assert_shape(w, [out_channels, in_channels, kh, kw]) # [OIkk]
+    # misc.assert_shape(x, [batch_size, in_channels, None, None]) # [NIHW]
+    # misc.assert_shape(s, [batch_size, in_channels]) # [NI]
 
     # Pre-normalize inputs.
     if demodulate:
@@ -69,7 +70,7 @@ def modulated_conv2d(
 
 #----------------------------------------------------------------------------
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class FullyConnectedLayer(torch.nn.Module):
     def __init__(self,
         in_features,                # Number of input features.
@@ -89,8 +90,15 @@ class FullyConnectedLayer(torch.nn.Module):
         self.bias = torch.nn.Parameter(torch.from_numpy(bias_init / lr_multiplier)) if bias else None
         self.weight_gain = lr_multiplier / np.sqrt(in_features)
         self.bias_gain = lr_multiplier
+        # self = FullyConnectedLayer(in_features=512, out_features=4, activation=linear)
+        # in_features = 512
+        # out_features = 4
+        # activation = 'linear'
+        # bias = True
+        # lr_multiplier = 1
+        # weight_init = 0
+        # bias_init = array([1., 0., 0., 0.], dtype=float32)
 
-        # pdb.set_trace()
 
     def forward(self, x):
         w = self.weight.to(x.dtype) * self.weight_gain
@@ -99,14 +107,15 @@ class FullyConnectedLayer(torch.nn.Module):
             b = b.to(x.dtype)
             if self.bias_gain != 1:
                 b = b * self.bias_gain
+
+        print("b --- ", self.bias_gain)
+        print("self.bias_gain --- ", self.bias_gain)
+
         if self.activation == 'linear' and b is not None:
             x = torch.addmm(b.unsqueeze(0), x, w.t())
         else:
             x = x.matmul(w.t())
             x = bias_act.bias_act(x, b, act=self.activation)
-
-        # pdb.set_trace()
-            
         return x
 
     def extra_repr(self):
@@ -114,7 +123,7 @@ class FullyConnectedLayer(torch.nn.Module):
 
 #----------------------------------------------------------------------------
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class MappingNetwork(torch.nn.Module):
     def __init__(self,
         z_dim,                      # Input latent (Z) dimensionality.
@@ -143,7 +152,7 @@ class MappingNetwork(torch.nn.Module):
         # pdb.set_trace()
 
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False):
-        misc.assert_shape(z, [None, self.z_dim])
+        # misc.assert_shape(z, [None, self.z_dim])
         if truncation_cutoff is None:
             truncation_cutoff = self.num_ws
 
@@ -151,7 +160,7 @@ class MappingNetwork(torch.nn.Module):
         x = z.to(torch.float32)
         x = x * (x.square().mean(1, keepdim=True) + 1e-8).rsqrt()
         if self.c_dim > 0:
-            misc.assert_shape(c, [None, self.c_dim])
+            # misc.assert_shape(c, [None, self.c_dim])
             y = self.embed(c.to(torch.float32))
             y = y * (y.square().mean(1, keepdim=True) + 1e-8).rsqrt()
             x = torch.cat([x, y], dim=1) if x is not None else y
@@ -178,7 +187,7 @@ class MappingNetwork(torch.nn.Module):
 
 #----------------------------------------------------------------------------
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class SynthesisInput(torch.nn.Module):
     def __init__(self,
         w_dim,          # Intermediate latent (W) dimensionality.
@@ -253,7 +262,7 @@ class SynthesisInput(torch.nn.Module):
 
         # Ensure correct shape.
         x = x.permute(0, 3, 1, 2) # [batch, channel, height, width]
-        misc.assert_shape(x, [w.shape[0], self.channels, int(self.size[1]), int(self.size[0])])
+        # misc.assert_shape(x, [w.shape[0], self.channels, int(self.size[1]), int(self.size[0])])
 
         # pdb.set_trace()
 
@@ -266,7 +275,7 @@ class SynthesisInput(torch.nn.Module):
 
 #----------------------------------------------------------------------------
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class SynthesisLayer(torch.nn.Module):
     def __init__(self,
         w_dim,                          # Intermediate latent (W) dimensionality.
@@ -287,10 +296,10 @@ class SynthesisLayer(torch.nn.Module):
         out_half_width,                 # Output Transition band half-width (f_h).
 
         # Hyperparameters.
-        conv_kernel         = 3,        # Convolution kernel size. Ignored for final the ToRGB layer.
+        conv_kernel         = 1,        # Convolution kernel size. Ignored for final the ToRGB layer.
         filter_size         = 6,        # Low-pass filter size relative to the lower resolution when up/downsampling.
         lrelu_upsampling    = 2,        # Relative sampling rate for leaky ReLU. Ignored for final the ToRGB layer.
-        use_radial_filters  = False,    # Use radially symmetric downsampling filter? Ignored for critically sampled layers.
+        use_radial_filters  = True,    # Use radially symmetric downsampling filter? Ignored for critically sampled layers.
         conv_clamp          = 256,      # Clamp the output to [-X, +X], None = disable clamping.
         magnitude_ema_beta  = 0.999,    # Decay rate for the moving average of input magnitudes.
     ):
@@ -347,8 +356,8 @@ class SynthesisLayer(torch.nn.Module):
 
     def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False):
         assert noise_mode in ['random', 'const', 'none'] # unused
-        misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
-        misc.assert_shape(w, [x.shape[0], self.w_dim])
+        # misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
+        # misc.assert_shape(w, [x.shape[0], self.w_dim])
 
         # Track input magnitude.
         if update_emas:
@@ -375,7 +384,7 @@ class SynthesisLayer(torch.nn.Module):
             up=self.up_factor, down=self.down_factor, padding=self.padding, gain=gain, slope=slope, clamp=self.conv_clamp)
 
         # Ensure correct shape and dtype.
-        misc.assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
+        # misc.assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
         assert x.dtype == dtype
 
         # pdb.set_trace()
@@ -385,6 +394,13 @@ class SynthesisLayer(torch.nn.Module):
     @staticmethod
     def design_lowpass_filter(numtaps, cutoff, width, fs, radial=False):
         assert numtaps >= 1
+
+        # numtaps = 12
+        # cutoff = 2.0
+        # width = 12.0
+        # fs = 32
+        # radial = False
+
 
         # Identity filter.
         if numtaps == 1:
@@ -404,8 +420,6 @@ class SynthesisLayer(torch.nn.Module):
         f *= np.outer(w, w)
         f /= np.sum(f)
 
-        # pdb.set_trace()
-
         return torch.as_tensor(f, dtype=torch.float32)
 
     def extra_repr(self):
@@ -420,7 +434,7 @@ class SynthesisLayer(torch.nn.Module):
 
 #----------------------------------------------------------------------------
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class SynthesisNetwork(torch.nn.Module):
     def __init__(self,
         w_dim,                          # Intermediate latent (W) dimensionality.
@@ -488,7 +502,7 @@ class SynthesisNetwork(torch.nn.Module):
         # pdb.set_trace()
 
     def forward(self, ws, **layer_kwargs):
-        misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
+        # misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
         ws = ws.to(torch.float32).unbind(dim=1)
 
         # Execute layers.
@@ -499,7 +513,7 @@ class SynthesisNetwork(torch.nn.Module):
             x = x * self.output_scale
 
         # Ensure correct shape and dtype.
-        misc.assert_shape(x, [None, self.img_channels, self.img_resolution, self.img_resolution])
+        # misc.assert_shape(x, [None, self.img_channels, self.img_resolution, self.img_resolution])
         x = x.to(torch.float32)
 
         # pdb.set_trace()
@@ -516,7 +530,7 @@ class SynthesisNetwork(torch.nn.Module):
 
 #----------------------------------------------------------------------------
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class Generator(torch.nn.Module):
     def __init__(self,
         z_dim = 512,                    # Input latent (Z) dimensionality.
@@ -542,13 +556,52 @@ class Generator(torch.nn.Module):
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         img = self.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
-
-        pdb.set_trace()
+        # pp ws.size() -- torch.Size([1, 16, 512])
+        # pp img.size() -- torch.Size([1, 3, 1024, 1024])
 
         return img
 
 #----------------------------------------------------------------------------
 
+def load(model, path, subkey=None):
+    """Load model."""
+    import os
+    if not os.path.exists(path):
+        raise IOError(f"Model checkpoint '{path}' doesn't exist.")
+
+    state_dict = torch.load(path, map_location=lambda storage, loc: storage)
+    if subkey is not None:
+        state_dict = state_dict[subkey]
+
+    # pdb.set_trace()
+    target_state_dict = model.state_dict()
+    for n, p in state_dict.items():
+        print(n, target_state_dict[n].size(), p.size())
+        if n in target_state_dict.keys():
+            target_state_dict[n].copy_(p)
+        else:
+            raise KeyError(n)
+
 if __name__ == "__main__":
+    import PIL.Image
+
     G = Generator()
+    load(G, "/tmp/image_stylegan3.pth")
+    G = G.eval()
+
+    if hasattr(G.synthesis, 'input'):
+        m = np.eye(3)
+        G.synthesis.input.transform.copy_(torch.from_numpy(m))
+    G = G.cuda()
+
+    z = torch.from_numpy(np.random.RandomState(42).randn(1, G.z_dim))
+    z = z.cuda()    
+    label = torch.zeros([1, G.c_dim])
+    label = label.cuda()
+    
+    with torch.no_grad():
+        img = G(z, label, truncation_psi=1.0, noise_mode="const")
+
+    img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
+    PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'out/seed.png')
     print(G)

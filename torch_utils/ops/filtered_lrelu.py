@@ -15,6 +15,7 @@ from .. import custom_ops
 from .. import misc
 from . import upfirdn2d
 from . import bias_act
+import pdb
 
 #----------------------------------------------------------------------------
 
@@ -109,8 +110,10 @@ def filtered_lrelu(x, fu=None, fd=None, b=None, up=1, down=1, padding=0, gain=np
     Returns:
         Tensor of the shape `[batch_size, num_channels, out_height, out_width]`.
     """
+
     assert isinstance(x, torch.Tensor)
     assert impl in ['ref', 'cuda']
+    # impl == 'cuda' and x.device.type == 'cuda' and _init() -- True
     if impl == 'cuda' and x.device.type == 'cuda' and _init():
         return _filtered_lrelu_cuda(up=up, down=down, padding=padding, gain=gain, slope=slope, clamp=clamp, flip_filter=flip_filter).apply(x, fu, fd, b, None, 0, 0)
     return _filtered_lrelu_ref(x, fu=fu, fd=fd, b=b, up=up, down=down, padding=padding, gain=gain, slope=slope, clamp=clamp, flip_filter=flip_filter)
@@ -159,6 +162,23 @@ _filtered_lrelu_cuda_cache = dict()
 def _filtered_lrelu_cuda(up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2, clamp=None, flip_filter=False):
     """Fast CUDA implementation of `filtered_lrelu()` using custom ops.
     """
+    # up = 2
+    # down = 2
+    # padding = [11, 10, 11, 10]
+    # gain = 1.4142135623730951
+    # slope = 0.2
+    # clamp = 256.0
+    # flip_filter = False
+
+    # up = 4
+    # down = 2
+    # padding = [-2, -5, -2, -5]
+    # gain = 1.4142135623730951
+    # slope = 0.2
+    # clamp = 256.0
+    # flip_filter = False
+
+
     assert isinstance(up, int) and up >= 1
     assert isinstance(down, int) and down >= 1
     px0, px1, py0, py1 = _parse_padding(padding)
@@ -218,6 +238,9 @@ def _filtered_lrelu_cuda(up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2, cl
             else:
                 return_code = -1
 
+            # print("return_code --- ", return_code)
+            # return_code ---  0
+
             # No Cuda kernel found? Fall back to generic implementation. Still more memory efficient than the reference implementation because
             # only the bit-packed sign tensor is retained for gradient computation.
             if return_code < 0:
@@ -233,6 +256,9 @@ def _filtered_lrelu_cuda(up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2, cl
             ctx.x_shape = x.shape
             ctx.y_shape = y.shape
             ctx.s_ofs = sx, sy
+
+            print(x.size(), y.size())
+
             return y
 
         @staticmethod
@@ -268,7 +294,9 @@ def _filtered_lrelu_cuda(up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2, cl
             return dx, dfu, dfd, db, dsi, dsx, dsy
 
     # Add to cache.
+    # key -- (2, 2, 11, 10, 11, 10, 1.4142135623730951, 0.2, 256.0, False)
     _filtered_lrelu_cuda_cache[key] = FilteredLReluCuda
+
     return FilteredLReluCuda
 
 #----------------------------------------------------------------------------

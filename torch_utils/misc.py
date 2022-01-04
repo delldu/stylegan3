@@ -12,6 +12,7 @@ import numpy as np
 import torch
 import warnings
 import dnnlib
+import pdb
 
 #----------------------------------------------------------------------------
 # Cached construction of constant tensors. Avoids CPU=>GPU copy when the
@@ -82,6 +83,8 @@ def suppress_tracer_warnings():
 def assert_shape(tensor, ref_shape):
     if tensor.ndim != len(ref_shape):
         raise AssertionError(f'Wrong number of dimensions: got {tensor.ndim}, expected {len(ref_shape)}')
+    # tensor.shape -- torch.Size([1, 512])
+    # ref_shape -- [None, 512]
     for idx, (size, ref_size) in enumerate(zip(tensor.shape, ref_shape)):
         if ref_size is None:
             pass

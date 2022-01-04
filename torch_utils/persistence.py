@@ -21,6 +21,7 @@ import copy
 import uuid
 import types
 import dnnlib
+import pdb
 
 #----------------------------------------------------------------------------
 
@@ -127,6 +128,9 @@ def persistent_class(orig_class):
 
     Decorator.__name__ = orig_class.__name__
     _decorators.add(Decorator)
+
+    # pdb.set_trace() ==> Here !!!
+
     return Decorator
 
 #----------------------------------------------------------------------------
