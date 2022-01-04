@@ -38,15 +38,16 @@ _null_tensor = torch.empty([0])
 
 def _init():
     global _plugin
-    if _plugin is None:
-        _plugin = custom_ops.get_plugin(
-            module_name='bias_act_plugin',
-            sources=['bias_act.cpp', 'bias_act.cu'],
-            headers=['bias_act.h'],
-            source_dir=os.path.dirname(__file__),
-            extra_cuda_cflags=['--use_fast_math'],
-        )
-    return True
+    # if _plugin is None:
+    #     _plugin = custom_ops.get_plugin(
+    #         module_name='bias_act_plugin',
+    #         sources=['bias_act.cpp', 'bias_act.cu'],
+    #         headers=['bias_act.h'],
+    #         source_dir=os.path.dirname(__file__),
+    #         extra_cuda_cflags=['--use_fast_math'],
+    #     )
+    # xxxx8888    
+    return False
 
 #----------------------------------------------------------------------------
 
@@ -89,7 +90,7 @@ def bias_act(x, b=None, dim=1, act='linear', alpha=None, gain=None, clamp=None, 
 
 #----------------------------------------------------------------------------
 
-@misc.profiled_function
+# @misc.profiled_function
 def _bias_act_ref(x, b=None, dim=1, act='linear', alpha=None, gain=None, clamp=None):
     """Slow reference implementation of `bias_act()` using standard TensorFlow ops.
     """
@@ -135,6 +136,16 @@ def _bias_act_cuda(dim=1, act='linear', alpha=None, gain=None, clamp=None):
     gain = float(gain if gain is not None else spec.def_gain)
     clamp = float(clamp if clamp is not None else -1)
 
+    # print("spec -- ", spec)
+    # spec --  {'func': <function <lambda> at 0x7f08b4692f70>, 
+    #     'def_alpha': 0.2, 'def_gain': 1.4142135623730951, 'cuda_idx': 3, 'ref': 'y', 'has_2nd_grad': False}
+    # print("alpha -- ", alpha)
+    # print("gain -- ", gain)
+    # print("clamp -- ", clamp)
+    # alpha --  0.2
+    # gain --  1.4142135623730951
+    # clamp --  -1.0
+
     # Lookup from cache.
     key = (dim, act, alpha, gain, clamp)
     if key in _bias_act_cuda_cache:
@@ -148,6 +159,8 @@ def _bias_act_cuda(dim=1, act='linear', alpha=None, gain=None, clamp=None):
             x = x.contiguous(memory_format=ctx.memory_format)
             b = b.contiguous() if b is not None else _null_tensor
             y = x
+            # pp x.size(), b.size() -- (torch.Size([1, 512]), torch.Size([512]))
+            # act != 'linear' or gain != 1 or clamp >= 0 or b is not _null_tensor -- True
             if act != 'linear' or gain != 1 or clamp >= 0 or b is not _null_tensor:
                 y = _plugin.bias_act(x, b, _null_tensor, _null_tensor, _null_tensor, 0, dim, spec.cuda_idx, alpha, gain, clamp)
             ctx.save_for_backward(

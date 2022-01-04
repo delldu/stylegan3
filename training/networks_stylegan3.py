@@ -13,12 +13,15 @@ import numpy as np
 import scipy.signal
 # import scipy.optimize
 import torch
-from torch_utils import misc
-from torch_utils import persistence
-from torch_utils.ops import conv2d_gradfix
+# xxxx8888
+# from torch_utils import misc
+# from torch_utils import persistence
+# from torch_utils.ops import conv2d_gradfix
 from torch_utils.ops import filtered_lrelu
 from torch_utils.ops import bias_act
 import pdb
+
+import torch.nn.functional as F
 
 #----------------------------------------------------------------------------
 
@@ -31,6 +34,7 @@ def modulated_conv2d(
     padding     = 0,    # Padding: int or [padH, padW]
     input_gain  = None, # Optional scale factors for the input channels: [], [in_channels], or [batch_size, in_channels]
 ):
+
     # with misc.suppress_tracer_warnings(): # this value will be treated as a constant
     #     batch_size = int(x.shape[0])
     batch_size = int(x.shape[0])
@@ -40,6 +44,7 @@ def modulated_conv2d(
     # misc.assert_shape(s, [batch_size, in_channels]) # [NI]
 
     # Pre-normalize inputs.
+    # print("demodulate -- ", demodulate), demodulate -- True/False
     if demodulate:
         w = w * w.square().mean([1,2,3], keepdim=True).rsqrt()
         s = s * s.square().mean().rsqrt()
@@ -54,6 +59,8 @@ def modulated_conv2d(
         w = w * dcoefs.unsqueeze(2).unsqueeze(3).unsqueeze(4) # [NOIkk]
 
     # Apply input scaling.
+    # print("input_gain -- ", input_gain)
+    # input_gain --  tensor(0.0145, device='cuda:0')
     if input_gain is not None:
         input_gain = input_gain.expand(batch_size, in_channels) # [NI]
         w = w * input_gain.unsqueeze(1).unsqueeze(3).unsqueeze(4) # [NOIkk]
@@ -61,10 +68,12 @@ def modulated_conv2d(
     # Execute as one fused op using grouped convolution.
     x = x.reshape(1, -1, *x.shape[2:])
     w = w.reshape(-1, in_channels, kh, kw)
-    x = conv2d_gradfix.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
-    x = x.reshape(batch_size, -1, *x.shape[2:])
 
-    # pdb.set_trace()
+    # x = conv2d_gradfix.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
+    # xxxx88888
+    x = F.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
+
+    x = x.reshape(batch_size, -1, *x.shape[2:])
 
     return x
 
@@ -108,14 +117,18 @@ class FullyConnectedLayer(torch.nn.Module):
             if self.bias_gain != 1:
                 b = b * self.bias_gain
 
-        print("b --- ", self.bias_gain)
-        print("self.bias_gain --- ", self.bias_gain)
+        # print("self.bias_gain --- ", self.bias_gain)
+        # self.bias_gain ---  1
 
         if self.activation == 'linear' and b is not None:
             x = torch.addmm(b.unsqueeze(0), x, w.t())
         else:
+            # print("self.activation -- ", self.activation, "x.size() --", x.size(), "b.size() --- ", b.size())
+            # self.activation --  lrelu x.size() -- torch.Size([1, 512]) b.size() ---  torch.Size([512])
             x = x.matmul(w.t())
+            # xxxx8888
             x = bias_act.bias_act(x, b, act=self.activation)
+            # x = F.leaky_relu(x, 0.2)
         return x
 
     def extra_repr(self):
@@ -135,6 +148,15 @@ class MappingNetwork(torch.nn.Module):
         w_avg_beta      = 0.998,    # Decay for tracking the moving average of W during training.
     ):
         super().__init__()
+
+        # z_dim = 512
+        # c_dim = 0
+        # w_dim = 512
+        # num_ws = 16
+        # num_layers = 2
+        # lr_multiplier = 0.01
+        # w_avg_beta = 0.998
+
         self.z_dim = z_dim
         self.c_dim = c_dim
         self.w_dim = w_dim
@@ -149,10 +171,12 @@ class MappingNetwork(torch.nn.Module):
             layer = FullyConnectedLayer(in_features, out_features, activation='lrelu', lr_multiplier=lr_multiplier)
             setattr(self, f'fc{idx}', layer)
         self.register_buffer('w_avg', torch.zeros([w_dim]))
-        # pdb.set_trace()
 
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False):
         # misc.assert_shape(z, [None, self.z_dim])
+
+        # print("truncation_cutoff -- ", truncation_cutoff)
+        # truncation_cutoff --  None 
         if truncation_cutoff is None:
             truncation_cutoff = self.num_ws
 
@@ -170,6 +194,8 @@ class MappingNetwork(torch.nn.Module):
             x = getattr(self, f'fc{idx}')(x)
 
         # Update moving average of W.
+        # print("update_emas -- ", update_emas)
+        # update_emas --  False
         if update_emas:
             self.w_avg.copy_(x.detach().mean(dim=0).lerp(self.w_avg, self.w_avg_beta))
 
@@ -197,6 +223,18 @@ class SynthesisInput(torch.nn.Module):
         bandwidth,      # Output bandwidth.
     ):
         super().__init__()
+
+        # self = SynthesisInput(
+        #   w_dim=512, channels=1024, size=[36, 36],
+        #   sampling_rate=16, bandwidth=2
+        #   (affine): FullyConnectedLayer(in_features=512, out_features=4, activation=linear)
+        # )
+        # w_dim = 512
+        # channels = 1024
+        # size = 36
+        # sampling_rate = 16.0
+        # bandwidth = 2.0
+
         self.w_dim = w_dim
         self.channels = channels
         self.size = np.broadcast_to(np.asarray(size), [2])
@@ -216,7 +254,6 @@ class SynthesisInput(torch.nn.Module):
         self.register_buffer('transform', torch.eye(3, 3)) # User-specified inverse transform wrt. resulting image.
         self.register_buffer('freqs', freqs)
         self.register_buffer('phases', phases)
-        # pdb.set_trace()
 
     def forward(self, w):
         # Introduce batch dimension.
@@ -263,8 +300,6 @@ class SynthesisInput(torch.nn.Module):
         # Ensure correct shape.
         x = x.permute(0, 3, 1, 2) # [batch, channel, height, width]
         # misc.assert_shape(x, [w.shape[0], self.channels, int(self.size[1]), int(self.size[0])])
-
-        # pdb.set_trace()
 
         return x
 
@@ -373,6 +408,7 @@ class SynthesisLayer(torch.nn.Module):
             styles = styles * weight_gain
 
         # Execute modulated conv2d.
+        # self.use_fp16 -- False
         dtype = torch.float16 if (self.use_fp16 and not force_fp32 and x.device.type == 'cuda') else torch.float32
         x = modulated_conv2d(x=x.to(dtype), w=self.weight, s=styles,
             padding=self.conv_kernel-1, demodulate=(not self.is_torgb), input_gain=input_gain)
@@ -380,6 +416,7 @@ class SynthesisLayer(torch.nn.Module):
         # Execute bias, filtered leaky ReLU, and clamping.
         gain = 1 if self.is_torgb else np.sqrt(2)
         slope = 1 if self.is_torgb else 0.2
+        # xxxx8888
         x = filtered_lrelu.filtered_lrelu(x=x, fu=self.up_filter, fd=self.down_filter, b=self.bias.to(x.dtype),
             up=self.up_factor, down=self.down_factor, padding=self.padding, gain=gain, slope=slope, clamp=self.conv_clamp)
 
@@ -401,9 +438,9 @@ class SynthesisLayer(torch.nn.Module):
         # fs = 32
         # radial = False
 
-
         # Identity filter.
         if numtaps == 1:
+            # print("numtaps --- ", numtaps) ==> Here !!!
             return None
 
         # Separable Kaiser low-pass filter.
@@ -453,6 +490,23 @@ class SynthesisNetwork(torch.nn.Module):
         **layer_kwargs,                 # Arguments for SynthesisLayer.
     ):
         super().__init__()
+        # w_dim = 512
+        # img_resolution = 1024
+        # img_channels = 3
+        # channel_base = 65536
+        # channel_max = 1024
+        # num_layers = 14
+        # num_critical = 2
+        # first_cutoff = 2
+        # first_stopband = 4.2870938501451725
+        # last_stopband_rel = 1.2311444133449163
+        # margin_size = 10
+        # output_scale = 0.25
+        # num_fp16_res = 4
+        # layer_kwargs = {}
+
+
+
         self.w_dim = w_dim
         self.num_ws = num_layers + 2
         self.img_resolution = img_resolution
@@ -483,11 +537,14 @@ class SynthesisNetwork(torch.nn.Module):
             w_dim=self.w_dim, channels=int(channels[0]), size=int(sizes[0]),
             sampling_rate=sampling_rates[0], bandwidth=cutoffs[0])
         self.layer_names = []
+
+        # print("self.num_layers --- ", self.num_layers) -- 14
         for idx in range(self.num_layers + 1):
             prev = max(idx - 1, 0)
             is_torgb = (idx == self.num_layers)
             is_critically_sampled = (idx >= self.num_layers - self.num_critical)
             use_fp16 = (sampling_rates[idx] * (2 ** self.num_fp16_res) > self.img_resolution)
+            # print("use_fp16 --- ", use_fp16) ==> True/False
             layer = SynthesisLayer(
                 w_dim=self.w_dim, is_torgb=is_torgb, is_critically_sampled=is_critically_sampled, use_fp16=use_fp16,
                 in_channels=int(channels[prev]), out_channels= int(channels[idx]),
@@ -499,7 +556,6 @@ class SynthesisNetwork(torch.nn.Module):
             name = f'L{idx}_{layer.out_size[0]}_{layer.out_channels}'
             setattr(self, name, layer)
             self.layer_names.append(name)
-        # pdb.set_trace()
 
     def forward(self, ws, **layer_kwargs):
         # misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
@@ -507,6 +563,8 @@ class SynthesisNetwork(torch.nn.Module):
 
         # Execute layers.
         x = self.input(ws[0])
+        # print("layer_kwargs ---- ", layer_kwargs)
+        # layer_kwargs ----  {'update_emas': False, 'noise_mode': 'const'}
         for name, w in zip(self.layer_names, ws[1:]):
             x = getattr(self, name)(x, w, **layer_kwargs)
         if self.output_scale != 1:
@@ -576,7 +634,7 @@ def load(model, path, subkey=None):
     # pdb.set_trace()
     target_state_dict = model.state_dict()
     for n, p in state_dict.items():
-        print(n, target_state_dict[n].size(), p.size())
+        # print(n, target_state_dict[n].size(), p.size())
         if n in target_state_dict.keys():
             target_state_dict[n].copy_(p)
         else:
@@ -586,22 +644,22 @@ if __name__ == "__main__":
     import PIL.Image
 
     G = Generator()
-    load(G, "/tmp/image_stylegan3.pth")
+    load(G, "project/face_pulse/models/image_stylegan3.pth")
     G = G.eval()
 
-    if hasattr(G.synthesis, 'input'):
-        m = np.eye(3)
-        G.synthesis.input.transform.copy_(torch.from_numpy(m))
+    # if hasattr(G.synthesis, 'input'):
+    #     m = np.eye(3)
+    #     G.synthesis.input.transform.copy_(torch.from_numpy(m))
     G = G.cuda()
 
     z = torch.from_numpy(np.random.RandomState(42).randn(1, G.z_dim))
     z = z.cuda()    
     label = torch.zeros([1, G.c_dim])
     label = label.cuda()
-    
+
     with torch.no_grad():
-        img = G(z, label, truncation_psi=1.0, noise_mode="const")
+        img = G(z, label, truncation_psi=0.7, noise_mode="const")
 
     img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
     PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'out/seed.png')
-    print(G)
+    # print(G)

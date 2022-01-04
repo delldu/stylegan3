@@ -23,15 +23,16 @@ _plugin = None
 
 def _init():
     global _plugin
-    if _plugin is None:
-        _plugin = custom_ops.get_plugin(
-            module_name='filtered_lrelu_plugin',
-            sources=['filtered_lrelu.cpp', 'filtered_lrelu_wr.cu', 'filtered_lrelu_rd.cu', 'filtered_lrelu_ns.cu'],
-            headers=['filtered_lrelu.h', 'filtered_lrelu.cu'],
-            source_dir=os.path.dirname(__file__),
-            extra_cuda_cflags=['--use_fast_math'],
-        )
-    return True
+    # if _plugin is None:
+    #     _plugin = custom_ops.get_plugin(
+    #         module_name='filtered_lrelu_plugin',
+    #         sources=['filtered_lrelu.cpp', 'filtered_lrelu_wr.cu', 'filtered_lrelu_rd.cu', 'filtered_lrelu_ns.cu'],
+    #         headers=['filtered_lrelu.h', 'filtered_lrelu.cu'],
+    #         source_dir=os.path.dirname(__file__),
+    #         extra_cuda_cflags=['--use_fast_math'],
+    #     )
+    # xxxx8888
+    return False
 
 def _get_filter_size(f):
     if f is None:
@@ -257,7 +258,7 @@ def _filtered_lrelu_cuda(up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2, cl
             ctx.y_shape = y.shape
             ctx.s_ofs = sx, sy
 
-            print(x.size(), y.size())
+            print("xxxx8888 ----------------- ", x.size(), y.size())
 
             return y
 

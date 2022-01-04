@@ -107,7 +107,7 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
         #
         all_source_files = sorted(sources + headers)
         all_source_dirs = set(os.path.dirname(fname) for fname in all_source_files)
-        if len(all_source_dirs) == 1: # and ('TORCH_EXTENSIONS_DIR' in os.environ):
+        if len(headers) == 1: # and ('TORCH_EXTENSIONS_DIR' in os.environ):
 
             # Compute combined hash digest for all source files.
             hash_md5 = hashlib.md5()
@@ -119,6 +119,7 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
             source_digest = hash_md5.hexdigest()
             build_top_dir = torch.utils.cpp_extension._get_build_directory(module_name, verbose=verbose_build) # pylint: disable=protected-access
             cached_build_dir = os.path.join(build_top_dir, f'{source_digest}-{_get_mangled_gpu_name()}')
+
 
             if not os.path.isdir(cached_build_dir):
                 tmpdir = f'{build_top_dir}/srctmp-{uuid.uuid4().hex}'
@@ -141,7 +142,6 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
 
         # Load.
         module = importlib.import_module(module_name)
-
     except:
         if verbosity == 'brief':
             print('Failed!')
