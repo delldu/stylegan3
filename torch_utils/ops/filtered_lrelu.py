@@ -126,6 +126,9 @@ def _filtered_lrelu_ref(x, fu=None, fd=None, b=None, up=1, down=1, padding=0, ga
     """Slow and memory-inefficient reference implementation of `filtered_lrelu()` using
     existing `upfirdn2n()` and `bias_act()` ops.
     """
+
+    # print("flip_filter --- ", flip_filter) --- False
+
     assert isinstance(x, torch.Tensor) and x.ndim == 4
     fu_w, fu_h = _get_filter_size(fu)
     fd_w, fd_h = _get_filter_size(fd)
@@ -257,8 +260,6 @@ def _filtered_lrelu_cuda(up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2, cl
             ctx.x_shape = x.shape
             ctx.y_shape = y.shape
             ctx.s_ofs = sx, sy
-
-            print("xxxx8888 ----------------- ", x.size(), y.size())
 
             return y
 

@@ -11,6 +11,7 @@ arbitrarily high order gradients with zero performance penalty."""
 
 import contextlib
 import torch
+import torch.nn.functional as F
 
 # pylint: disable=redefined-builtin
 # pylint: disable=arguments-differ
@@ -38,14 +39,14 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     # _should_use_custom_op(input) -- False
     if _should_use_custom_op(input):
         return _conv2d_gradfix(transpose=False, weight_shape=weight.shape, stride=stride, padding=padding, output_padding=0, dilation=dilation, groups=groups).apply(input, weight, bias)
-    return torch.nn.functional.conv2d(input=input, weight=weight, bias=bias, stride=stride, padding=padding, dilation=dilation, groups=groups)
+    return F.conv2d(input=input, weight=weight, bias=bias, stride=stride, padding=padding, dilation=dilation, groups=groups)
 
 def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
     pdb.set_trace()
 
     if _should_use_custom_op(input):
         return _conv2d_gradfix(transpose=True, weight_shape=weight.shape, stride=stride, padding=padding, output_padding=output_padding, groups=groups, dilation=dilation).apply(input, weight, bias)
-    return torch.nn.functional.conv_transpose2d(input=input, weight=weight, bias=bias, stride=stride, padding=padding, output_padding=output_padding, groups=groups, dilation=dilation)
+    return F.conv_transpose2d(input=input, weight=weight, bias=bias, stride=stride, padding=padding, output_padding=output_padding, groups=groups, dilation=dilation)
 
 #----------------------------------------------------------------------------
 
@@ -130,8 +131,8 @@ def _conv2d_gradfix(transpose, weight_shape, stride, padding, output_padding, di
             # General case => cuDNN.
             print("Conv2d forward -- transpose", transpose)
             if transpose:
-                return torch.nn.functional.conv_transpose2d(input=input, weight=weight, bias=bias, output_padding=output_padding, **common_kwargs)
-            return torch.nn.functional.conv2d(input=input, weight=weight, bias=bias, **common_kwargs)
+                return F.conv_transpose2d(input=input, weight=weight, bias=bias, output_padding=output_padding, **common_kwargs)
+            return F.conv2d(input=input, weight=weight, bias=bias, **common_kwargs)
 
         @staticmethod
         def backward(ctx, grad_output):

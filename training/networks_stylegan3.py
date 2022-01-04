@@ -657,8 +657,9 @@ if __name__ == "__main__":
     label = torch.zeros([1, G.c_dim])
     label = label.cuda()
 
-    with torch.no_grad():
-        img = G(z, label, truncation_psi=0.7, noise_mode="const")
+    for i in range(10):
+        with torch.no_grad():
+            img = G(z, label, truncation_psi=0.7, noise_mode="const")
 
     img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
     PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'out/seed.png')

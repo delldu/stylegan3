@@ -11,6 +11,7 @@
 import os
 import numpy as np
 import torch
+import torch.nn.functional as F
 import dnnlib
 
 from .. import custom_ops
@@ -21,13 +22,13 @@ import pdb
 
 activation_funcs = {
     'linear':   dnnlib.EasyDict(func=lambda x, **_:         x,                                          def_alpha=0,    def_gain=1,             cuda_idx=1, ref='',  has_2nd_grad=False),
-    'relu':     dnnlib.EasyDict(func=lambda x, **_:         torch.nn.functional.relu(x),                def_alpha=0,    def_gain=np.sqrt(2),    cuda_idx=2, ref='y', has_2nd_grad=False),
-    'lrelu':    dnnlib.EasyDict(func=lambda x, alpha, **_:  torch.nn.functional.leaky_relu(x, alpha),   def_alpha=0.2,  def_gain=np.sqrt(2),    cuda_idx=3, ref='y', has_2nd_grad=False),
+    'relu':     dnnlib.EasyDict(func=lambda x, **_:         F.relu(x),                def_alpha=0,    def_gain=np.sqrt(2),    cuda_idx=2, ref='y', has_2nd_grad=False),
+    'lrelu':    dnnlib.EasyDict(func=lambda x, alpha, **_:  F.leaky_relu(x, alpha),   def_alpha=0.2,  def_gain=np.sqrt(2),    cuda_idx=3, ref='y', has_2nd_grad=False),
     'tanh':     dnnlib.EasyDict(func=lambda x, **_:         torch.tanh(x),                              def_alpha=0,    def_gain=1,             cuda_idx=4, ref='y', has_2nd_grad=True),
     'sigmoid':  dnnlib.EasyDict(func=lambda x, **_:         torch.sigmoid(x),                           def_alpha=0,    def_gain=1,             cuda_idx=5, ref='y', has_2nd_grad=True),
-    'elu':      dnnlib.EasyDict(func=lambda x, **_:         torch.nn.functional.elu(x),                 def_alpha=0,    def_gain=1,             cuda_idx=6, ref='y', has_2nd_grad=True),
-    'selu':     dnnlib.EasyDict(func=lambda x, **_:         torch.nn.functional.selu(x),                def_alpha=0,    def_gain=1,             cuda_idx=7, ref='y', has_2nd_grad=True),
-    'softplus': dnnlib.EasyDict(func=lambda x, **_:         torch.nn.functional.softplus(x),            def_alpha=0,    def_gain=1,             cuda_idx=8, ref='y', has_2nd_grad=True),
+    'elu':      dnnlib.EasyDict(func=lambda x, **_:         F.elu(x),                 def_alpha=0,    def_gain=1,             cuda_idx=6, ref='y', has_2nd_grad=True),
+    'selu':     dnnlib.EasyDict(func=lambda x, **_:         F.selu(x),                def_alpha=0,    def_gain=1,             cuda_idx=7, ref='y', has_2nd_grad=True),
+    'softplus': dnnlib.EasyDict(func=lambda x, **_:         F.softplus(x),            def_alpha=0,    def_gain=1,             cuda_idx=8, ref='y', has_2nd_grad=True),
     'swish':    dnnlib.EasyDict(func=lambda x, **_:         torch.sigmoid(x) * x,                       def_alpha=0,    def_gain=np.sqrt(2),    cuda_idx=9, ref='x', has_2nd_grad=True),
 }
 
@@ -103,19 +104,20 @@ def _bias_act_ref(x, b=None, dim=1, act='linear', alpha=None, gain=None, clamp=N
 
     # Add bias.
     if b is not None:
-        assert isinstance(b, torch.Tensor) and b.ndim == 1
-        assert 0 <= dim < x.ndim
-        assert b.shape[0] == x.shape[dim]
+        # assert isinstance(b, torch.Tensor) and b.ndim == 1
+        # assert 0 <= dim < x.ndim
+        # assert b.shape[0] == x.shape[dim]
         x = x + b.reshape([-1 if i == dim else 1 for i in range(x.ndim)])
 
     # Evaluate activation function.
-    alpha = float(alpha)
+    # alpha = float(alpha)
+
     x = spec.func(x, alpha=alpha)
 
     # Scale by gain.
-    gain = float(gain)
-    if gain != 1:
-        x = x * gain
+    # gain = float(gain)
+    # if gain != 1:
+    x = x * gain
 
     # Clamp.
     if clamp >= 0:

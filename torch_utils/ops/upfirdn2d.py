@@ -15,7 +15,8 @@ import torch
 from .. import custom_ops
 from .. import misc
 from . import conv2d_gradfix
-
+import torch.nn.functional as F
+import pdb
 #----------------------------------------------------------------------------
 
 _plugin = None
@@ -186,11 +187,11 @@ def _upfirdn2d_ref(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1):
 
     # Upsample by inserting zeros.
     x = x.reshape([batch_size, num_channels, in_height, 1, in_width, 1])
-    x = torch.nn.functional.pad(x, [0, upx - 1, 0, 0, 0, upy - 1])
+    x = F.pad(x, [0, upx - 1, 0, 0, 0, upy - 1])
     x = x.reshape([batch_size, num_channels, in_height * upy, in_width * upx])
 
     # Pad or crop.
-    x = torch.nn.functional.pad(x, [max(padx0, 0), max(padx1, 0), max(pady0, 0), max(pady1, 0)])
+    x = F.pad(x, [max(padx0, 0), max(padx1, 0), max(pady0, 0), max(pady1, 0)])
     x = x[:, :, max(-pady0, 0) : x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0)]
 
     # Setup filter.
@@ -201,11 +202,17 @@ def _upfirdn2d_ref(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1):
 
     # Convolve with the filter.
     f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
+    # xxxx8888
+    # if f.ndim == 4:
+    #     x = conv2d_gradfix.conv2d(input=x, weight=f, groups=num_channels)
+    # else:
+    #     x = conv2d_gradfix.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
+    #     x = conv2d_gradfix.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
     if f.ndim == 4:
-        x = conv2d_gradfix.conv2d(input=x, weight=f, groups=num_channels)
+        x = F.conv2d(input=x, weight=f, groups=num_channels)
     else:
-        x = conv2d_gradfix.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
-        x = conv2d_gradfix.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
+        x = F.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
+        x = F.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
 
     # Downsample by throwing away pixels.
     x = x[:, :, ::downy, ::downx]
