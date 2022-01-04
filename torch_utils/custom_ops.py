@@ -17,6 +17,7 @@ import uuid
 import torch
 import torch.utils.cpp_extension
 from torch.utils.file_baton import FileBaton
+import pdb
 
 #----------------------------------------------------------------------------
 # Global options.
@@ -152,6 +153,9 @@ def get_plugin(module_name, sources, headers=None, source_dir=None, **build_kwar
     elif verbosity == 'brief':
         print('Done.')
     _cached_plugins[module_name] = module
+
+    # module -- <module 'bias_act_plugin' from '/home/dell/.cache/torch_extensions/bias_act_plugin/
+    # 3cb576a0039689487cfba59279dd6d46-geforce-rtx-2080-ti/bias_act_plugin.so'>
     return module
 
 #----------------------------------------------------------------------------

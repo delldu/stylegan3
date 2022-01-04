@@ -19,6 +19,7 @@ import PIL.Image
 import torch
 
 import legacy
+import pdb
 
 #----------------------------------------------------------------------------
 
@@ -64,6 +65,13 @@ def make_transform(translate: Tuple[float,float], angle: float):
     m[1][0] = -s
     m[1][1] = c
     m[1][2] = translate[1]
+
+    # pp type(m), m.shape, m
+    # (<class 'numpy.ndarray'>, (3, 3),
+    # array([[ 1.,  0.,  0.],
+    #        [-0.,  1.,  0.],
+    #        [ 0.,  0.,  1.]]))
+
     return m
 
 #----------------------------------------------------------------------------
@@ -107,32 +115,56 @@ def generate_images(
     with dnnlib.util.open_url(network_pkl) as f:
         G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
 
+    # torch.save(G.state_dict(), "/tmp/image_stylegan3.pth")
+    pdb.set_trace()
+
     os.makedirs(outdir, exist_ok=True)
 
     # Labels.
     label = torch.zeros([1, G.c_dim], device=device)
+    #  G.c_dim -- 0
     if G.c_dim != 0:
         if class_idx is None:
             raise click.ClickException('Must specify class label with --class when using a conditional network')
         label[:, class_idx] = 1
     else:
+        # pp class_idx -- None
         if class_idx is not None:
             print ('warn: --class=lbl ignored when running on an unconditional network')
 
     # Generate images.
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
+        # G.z_dim -- 512
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
+        # pp z.size() -- torch.Size([1, 512])
+        # z.mean() -- tensor(0.0493, device='cuda:0', dtype=torch.float64), 
+        # z.std() -- tensor(0.9856, device='cuda:0', dtype=torch.float64)
 
         # Construct an inverse rotation/translation matrix and pass to the generator.  The
         # generator expects this matrix as an inverse to avoid potentially failing numerical
         # operations in the network.
+
+        # hasattr(G.synthesis, 'input') -- True
         if hasattr(G.synthesis, 'input'):
             m = make_transform(translate, rotate)
             m = np.linalg.inv(m)
             G.synthesis.input.transform.copy_(torch.from_numpy(m))
 
+        # (Pdb) G.synthesis.input
+        # SynthesisInput(
+        #   w_dim=512, channels=1024, size=[36, 36],
+        #   sampling_rate=16, bandwidth=2
+        #   (affine): FullyConnectedLayer(in_features=512, out_features=4, activation=linear)
+        # )
+        # (Pdb) G.synthesis.input.transform
+        # tensor([[1., 0., 0.],
+        #         [0., 1., 0.],
+        #         [0., 0., 1.]], device='cuda:0')
+
+        # label -- tensor([], device='cuda:0', size=(1, 0))
         img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)
+        # img.size() -- torch.Size([1, 3, 1024, 1024])
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
         PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:04d}.png')
 

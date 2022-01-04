@@ -16,12 +16,12 @@ import numpy as np
 import torch
 import dnnlib
 from torch_utils import misc
-
+import pdb
 #----------------------------------------------------------------------------
 
 def load_network_pkl(f, force_fp16=False):
     data = _LegacyUnpickler(f).load()
-
+    # data.keys() -- dict_keys(['training_set_kwargs', 'G', 'D', 'G_ema', 'augment_pipe', 'kwargs'])
     # Legacy TensorFlow pickle => convert.
     if isinstance(data, tuple) and len(data) == 3 and all(isinstance(net, _TFNetworkStub) for net in data):
         tf_G, tf_D, tf_Gs = data
@@ -44,6 +44,7 @@ def load_network_pkl(f, force_fp16=False):
     assert isinstance(data['augment_pipe'], (torch.nn.Module, type(None)))
 
     # Force FP16.
+    # force_fp16 -- False
     if force_fp16:
         for key in ['G', 'D', 'G_ema']:
             old = data[key]

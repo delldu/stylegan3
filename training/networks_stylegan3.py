@@ -18,6 +18,7 @@ from torch_utils import persistence
 from torch_utils.ops import conv2d_gradfix
 from torch_utils.ops import filtered_lrelu
 from torch_utils.ops import bias_act
+import pdb
 
 #----------------------------------------------------------------------------
 
@@ -61,6 +62,9 @@ def modulated_conv2d(
     w = w.reshape(-1, in_channels, kh, kw)
     x = conv2d_gradfix.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
     x = x.reshape(batch_size, -1, *x.shape[2:])
+
+    # pdb.set_trace()
+
     return x
 
 #----------------------------------------------------------------------------
@@ -86,6 +90,8 @@ class FullyConnectedLayer(torch.nn.Module):
         self.weight_gain = lr_multiplier / np.sqrt(in_features)
         self.bias_gain = lr_multiplier
 
+        # pdb.set_trace()
+
     def forward(self, x):
         w = self.weight.to(x.dtype) * self.weight_gain
         b = self.bias
@@ -98,6 +104,9 @@ class FullyConnectedLayer(torch.nn.Module):
         else:
             x = x.matmul(w.t())
             x = bias_act.bias_act(x, b, act=self.activation)
+
+        # pdb.set_trace()
+            
         return x
 
     def extra_repr(self):
@@ -131,6 +140,7 @@ class MappingNetwork(torch.nn.Module):
             layer = FullyConnectedLayer(in_features, out_features, activation='lrelu', lr_multiplier=lr_multiplier)
             setattr(self, f'fc{idx}', layer)
         self.register_buffer('w_avg', torch.zeros([w_dim]))
+        # pdb.set_trace()
 
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False):
         misc.assert_shape(z, [None, self.z_dim])
@@ -158,6 +168,9 @@ class MappingNetwork(torch.nn.Module):
         x = x.unsqueeze(1).repeat([1, self.num_ws, 1])
         if truncation_psi != 1:
             x[:, :truncation_cutoff] = self.w_avg.lerp(x[:, :truncation_cutoff], truncation_psi)
+
+        # pdb.set_trace()
+
         return x
 
     def extra_repr(self):
@@ -194,6 +207,7 @@ class SynthesisInput(torch.nn.Module):
         self.register_buffer('transform', torch.eye(3, 3)) # User-specified inverse transform wrt. resulting image.
         self.register_buffer('freqs', freqs)
         self.register_buffer('phases', phases)
+        # pdb.set_trace()
 
     def forward(self, w):
         # Introduce batch dimension.
@@ -240,6 +254,9 @@ class SynthesisInput(torch.nn.Module):
         # Ensure correct shape.
         x = x.permute(0, 3, 1, 2) # [batch, channel, height, width]
         misc.assert_shape(x, [w.shape[0], self.channels, int(self.size[1]), int(self.size[0])])
+
+        # pdb.set_trace()
+
         return x
 
     def extra_repr(self):
@@ -326,6 +343,8 @@ class SynthesisLayer(torch.nn.Module):
         pad_hi = pad_total - pad_lo
         self.padding = [int(pad_lo[0]), int(pad_hi[0]), int(pad_lo[1]), int(pad_hi[1])]
 
+        # pdb.set_trace()
+
     def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False):
         assert noise_mode in ['random', 'const', 'none'] # unused
         misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
@@ -358,6 +377,9 @@ class SynthesisLayer(torch.nn.Module):
         # Ensure correct shape and dtype.
         misc.assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
         assert x.dtype == dtype
+
+        # pdb.set_trace()
+
         return x
 
     @staticmethod
@@ -381,6 +403,9 @@ class SynthesisLayer(torch.nn.Module):
         w = np.kaiser(numtaps, beta)
         f *= np.outer(w, w)
         f /= np.sum(f)
+
+        # pdb.set_trace()
+
         return torch.as_tensor(f, dtype=torch.float32)
 
     def extra_repr(self):
@@ -401,8 +426,8 @@ class SynthesisNetwork(torch.nn.Module):
         w_dim,                          # Intermediate latent (W) dimensionality.
         img_resolution,                 # Output image resolution.
         img_channels,                   # Number of color channels.
-        channel_base        = 32768,    # Overall multiplier for the number of channels.
-        channel_max         = 512,      # Maximum number of channels in any layer.
+        channel_base        = 32768 * 2,    # Overall multiplier for the number of channels.
+        channel_max         = 512 * 2,      # Maximum number of channels in any layer.
         num_layers          = 14,       # Total number of layers, excluding Fourier features and ToRGB.
         num_critical        = 2,        # Number of critically sampled layers at the end.
         first_cutoff        = 2,        # Cutoff frequency of the first layer (f_{c,0}).
@@ -460,6 +485,7 @@ class SynthesisNetwork(torch.nn.Module):
             name = f'L{idx}_{layer.out_size[0]}_{layer.out_channels}'
             setattr(self, name, layer)
             self.layer_names.append(name)
+        # pdb.set_trace()
 
     def forward(self, ws, **layer_kwargs):
         misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
@@ -475,6 +501,10 @@ class SynthesisNetwork(torch.nn.Module):
         # Ensure correct shape and dtype.
         misc.assert_shape(x, [None, self.img_channels, self.img_resolution, self.img_resolution])
         x = x.to(torch.float32)
+
+        # pdb.set_trace()
+
+
         return x
 
     def extra_repr(self):
@@ -489,13 +519,13 @@ class SynthesisNetwork(torch.nn.Module):
 @persistence.persistent_class
 class Generator(torch.nn.Module):
     def __init__(self,
-        z_dim,                      # Input latent (Z) dimensionality.
-        c_dim,                      # Conditioning label (C) dimensionality.
-        w_dim,                      # Intermediate latent (W) dimensionality.
-        img_resolution,             # Output resolution.
-        img_channels,               # Number of output color channels.
-        mapping_kwargs      = {},   # Arguments for MappingNetwork.
-        **synthesis_kwargs,         # Arguments for SynthesisNetwork.
+        z_dim = 512,                    # Input latent (Z) dimensionality.
+        c_dim = 0,                      # Conditioning label (C) dimensionality.
+        w_dim = 512,                    # Intermediate latent (W) dimensionality.
+        img_resolution = 1024,          # Output resolution.
+        img_channels = 3,               # Number of output color channels.
+        mapping_kwargs = {},            # Arguments for MappingNetwork.
+        **synthesis_kwargs,             # Arguments for SynthesisNetwork.
     ):
         super().__init__()
         self.z_dim = z_dim
@@ -505,11 +535,20 @@ class Generator(torch.nn.Module):
         self.img_channels = img_channels
         self.synthesis = SynthesisNetwork(w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
+        # self.num_ws -- 16
         self.mapping = MappingNetwork(z_dim=z_dim, c_dim=c_dim, w_dim=w_dim, num_ws=self.num_ws, **mapping_kwargs)
+        # pdb.set_trace()
 
     def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
         ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
         img = self.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
+
+        pdb.set_trace()
+
         return img
 
 #----------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    G = Generator()
+    print(G)

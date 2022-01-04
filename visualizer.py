@@ -26,7 +26,7 @@ from viz import performance_widget
 from viz import capture_widget
 from viz import layer_widget
 from viz import equivariance_widget
-
+import pdb
 #----------------------------------------------------------------------------
 
 class Visualizer(imgui_window.ImguiWindow):
@@ -64,6 +64,8 @@ class Visualizer(imgui_window.ImguiWindow):
         self.set_position(0, 0)
         self._adjust_font_size()
         self.skip_frame() # Layout may change after first frame.
+
+        pdb.set_trace()
 
     def close(self):
         super().close()
