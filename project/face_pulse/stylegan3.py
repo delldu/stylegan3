@@ -115,6 +115,7 @@ def modulated_conv2d(
     w = w.reshape(-1, in_channels, kh, kw)
 
     x = F.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
+
     return x.reshape(batch_size, -1, *x.shape[2:])
 
 
@@ -439,7 +440,7 @@ class SynthesisLayer(torch.nn.Module):
         # Execute bias, filtered leaky ReLU, and clamping.
         gain = 1 if self.is_torgb else np.sqrt(2)
         slope = 1 if self.is_torgb else 0.2
-        return filtered_lrelu(
+        y = filtered_lrelu(
             x=x,
             fu=self.up_filter,
             fd=self.down_filter,
@@ -450,6 +451,9 @@ class SynthesisLayer(torch.nn.Module):
             gain=gain,
             slope=slope,
         )
+        del x
+        torch.cuda.empty_cache()
+        return y
 
     @staticmethod
     def design_lowpass_filter(numtaps, cutoff, width, fs, radial=False):
