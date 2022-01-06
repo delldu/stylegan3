@@ -17,11 +17,78 @@ import torch
 # from torch_utils import misc
 # from torch_utils import persistence
 # from torch_utils.ops import conv2d_gradfix
-from torch_utils.ops import filtered_lrelu
+# from torch_utils.ops import filtered_lrelu
 from torch_utils.ops import bias_act
+import torch.nn.functional as F
 import pdb
 
-import torch.nn.functional as F
+def bias_linear_act(x, b=None):
+    if b is not None:
+        x = x + b.reshape([-1 if i == 1 else 1 for i in range(x.ndim)])
+    x = x.clamp(-256, 256)
+    return x
+
+
+def bias_lrelu_act(x, b=None, alpha=0.2, gain=np.sqrt(2)):
+    if b is not None:
+        x = x + b.reshape([-1 if i == 1 else 1 for i in range(x.ndim)])
+
+    x = F.leaky_relu(x, alpha)
+    x = x * gain
+    x = x.clamp(-256, 256)
+    return x
+
+def upfirdn2d(x, f, up=1, down=1, padding=[0, 0], gain=1):
+    '''FIR filter for 2D'''
+    
+    if f is None:
+        f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
+    batch_size, num_channels, in_height, in_width = x.shape
+
+    if len(padding) == 2:
+        padx, pady = padding
+        padding = [padx, padx, pady, pady]
+    padx0, padx1, pady0, pady1 = padding
+
+    # Upsample by inserting zeros.
+    x = x.reshape([batch_size, num_channels, in_height, 1, in_width, 1])
+    x = F.pad(x, [0, up - 1, 0, 0, 0, up - 1])
+    x = x.reshape([batch_size, num_channels, in_height * up, in_width * up])
+
+    # Pad or crop.
+    x = F.pad(x, [max(padx0, 0), max(padx1, 0), max(pady0, 0), max(pady1, 0)])
+    x = x[:, :, max(-pady0, 0) : x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0)]
+
+    # Setup filter.
+    f = f * (gain ** (f.ndim / 2))
+    f = f.to(x.dtype)
+    f = f.flip(list(range(f.ndim)))
+
+    # Convolve with the filter.
+    # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
+    f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
+    if f.ndim == 4:
+        x = F.conv2d(input=x, weight=f, groups=num_channels)
+    else:
+        x = F.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
+        x = F.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
+
+    # Downsample by throwing away pixels.
+    x = x[:, :, ::down, ::down]
+    return x
+
+
+def filtered_lrelu(x, fu=None, fd=None, b=None, up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2):
+    # Compute using existing ops.
+    x = bias_linear_act(x=x, b=b) # Apply bias.
+    # xxxx8888
+    x = upfirdn2d(x=x, f=fu, up=up, padding=padding, gain=up**2) # Upsample.
+    x = bias_lrelu_act(x=x, alpha=slope, gain=gain) # Bias, leaky ReLU
+    x = upfirdn2d(x=x, f=fd, down=down) # Downsample.
+
+    return x
+
+
 
 #----------------------------------------------------------------------------
 
@@ -37,6 +104,10 @@ def modulated_conv2d(
 
     # with misc.suppress_tracer_warnings(): # this value will be treated as a constant
     #     batch_size = int(x.shape[0])
+
+    # Reduce memory !!!
+    x = x.to(torch.float16)
+
     batch_size = int(x.shape[0])
     out_channels, in_channels, kh, kw = w.shape
     # misc.assert_shape(w, [out_channels, in_channels, kh, kw]) # [OIkk]
@@ -121,6 +192,7 @@ class FullyConnectedLayer(torch.nn.Module):
         # self.bias_gain ---  1
 
         if self.activation == 'linear' and b is not None:
+            # ===> Come here !!!
             x = torch.addmm(b.unsqueeze(0), x, w.t())
         else:
             # print("self.activation -- ", self.activation, "x.size() --", x.size(), "b.size() --- ", b.size())
@@ -128,7 +200,10 @@ class FullyConnectedLayer(torch.nn.Module):
             x = x.matmul(w.t())
             # xxxx8888
             x = bias_act.bias_act(x, b, act=self.activation)
-            # x = F.leaky_relu(x, 0.2)
+            # if self.activation == 'linear':
+            #     x = bias_linear_act(x, b)
+            # else:
+            #     x = bias_lrelu_act(x, b)
         return x
 
     def extra_repr(self):
@@ -165,46 +240,30 @@ class MappingNetwork(torch.nn.Module):
         self.w_avg_beta = w_avg_beta
 
         # Construct layers.
-        self.embed = FullyConnectedLayer(self.c_dim, self.w_dim) if self.c_dim > 0 else None
-        features = [self.z_dim + (self.w_dim if self.c_dim > 0 else 0)] + [self.w_dim] * self.num_layers
+        features = [self.z_dim] + [self.w_dim] * self.num_layers
+        # print("features --- ", features)
+        # features ---  [512, 512, 512]
         for idx, in_features, out_features in zip(range(num_layers), features[:-1], features[1:]):
             layer = FullyConnectedLayer(in_features, out_features, activation='lrelu', lr_multiplier=lr_multiplier)
             setattr(self, f'fc{idx}', layer)
         self.register_buffer('w_avg', torch.zeros([w_dim]))
 
-    def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False):
+    def forward(self, z, c, truncation_psi=1):
         # misc.assert_shape(z, [None, self.z_dim])
 
-        # print("truncation_cutoff -- ", truncation_cutoff)
-        # truncation_cutoff --  None 
-        if truncation_cutoff is None:
-            truncation_cutoff = self.num_ws
 
         # Embed, normalize, and concatenate inputs.
         x = z.to(torch.float32)
         x = x * (x.square().mean(1, keepdim=True) + 1e-8).rsqrt()
-        if self.c_dim > 0:
-            # misc.assert_shape(c, [None, self.c_dim])
-            y = self.embed(c.to(torch.float32))
-            y = y * (y.square().mean(1, keepdim=True) + 1e-8).rsqrt()
-            x = torch.cat([x, y], dim=1) if x is not None else y
 
         # Execute layers.
         for idx in range(self.num_layers):
             x = getattr(self, f'fc{idx}')(x)
 
-        # Update moving average of W.
-        # print("update_emas -- ", update_emas)
-        # update_emas --  False
-        if update_emas:
-            self.w_avg.copy_(x.detach().mean(dim=0).lerp(self.w_avg, self.w_avg_beta))
-
         # Broadcast and apply truncation.
         x = x.unsqueeze(1).repeat([1, self.num_ws, 1])
         if truncation_psi != 1:
-            x[:, :truncation_cutoff] = self.w_avg.lerp(x[:, :truncation_cutoff], truncation_psi)
-
-        # pdb.set_trace()
+            x[:, :self.num_ws] = self.w_avg.lerp(x[:, :self.num_ws], truncation_psi)
 
         return x
 
@@ -334,11 +393,11 @@ class SynthesisLayer(torch.nn.Module):
         conv_kernel         = 1,        # Convolution kernel size. Ignored for final the ToRGB layer.
         filter_size         = 6,        # Low-pass filter size relative to the lower resolution when up/downsampling.
         lrelu_upsampling    = 2,        # Relative sampling rate for leaky ReLU. Ignored for final the ToRGB layer.
-        use_radial_filters  = True,    # Use radially symmetric downsampling filter? Ignored for critically sampled layers.
         conv_clamp          = 256,      # Clamp the output to [-X, +X], None = disable clamping.
-        magnitude_ema_beta  = 0.999,    # Decay rate for the moving average of input magnitudes.
+        # magnitude_ema_beta  = 0.999,    # Decay rate for the moving average of input magnitudes.
     ):
         super().__init__()
+
         self.w_dim = w_dim
         self.is_torgb = is_torgb
         self.is_critically_sampled = is_critically_sampled
@@ -356,7 +415,7 @@ class SynthesisLayer(torch.nn.Module):
         self.out_half_width = out_half_width
         self.conv_kernel = 1 if is_torgb else conv_kernel
         self.conv_clamp = conv_clamp
-        self.magnitude_ema_beta = magnitude_ema_beta
+        # self.magnitude_ema_beta = magnitude_ema_beta
 
         # Setup parameters and buffers.
         self.affine = FullyConnectedLayer(self.w_dim, self.in_channels, bias_init=1)
@@ -375,7 +434,8 @@ class SynthesisLayer(torch.nn.Module):
         self.down_factor = int(np.rint(self.tmp_sampling_rate / self.out_sampling_rate))
         assert self.out_sampling_rate * self.down_factor == self.tmp_sampling_rate
         self.down_taps = filter_size * self.down_factor if self.down_factor > 1 and not self.is_torgb else 1
-        self.down_radial = use_radial_filters and not self.is_critically_sampled
+
+        self.down_radial = not self.is_critically_sampled
         self.register_buffer('down_filter', self.design_lowpass_filter(
             numtaps=self.down_taps, cutoff=self.out_cutoff, width=self.out_half_width*2, fs=self.tmp_sampling_rate, radial=self.down_radial))
 
@@ -389,16 +449,12 @@ class SynthesisLayer(torch.nn.Module):
 
         # pdb.set_trace()
 
-    def forward(self, x, w, noise_mode='random', force_fp32=False, update_emas=False):
+    def forward(self, x, w, noise_mode='random'):
         assert noise_mode in ['random', 'const', 'none'] # unused
         # misc.assert_shape(x, [None, self.in_channels, int(self.in_size[1]), int(self.in_size[0])])
         # misc.assert_shape(w, [x.shape[0], self.w_dim])
 
         # Track input magnitude.
-        if update_emas:
-            with torch.autograd.profiler.record_function('update_magnitude_ema'):
-                magnitude_cur = x.detach().to(torch.float32).square().mean()
-                self.magnitude_ema.copy_(magnitude_cur.lerp(self.magnitude_ema, self.magnitude_ema_beta))
         input_gain = self.magnitude_ema.rsqrt()
 
         # Execute affine layer.
@@ -408,21 +464,15 @@ class SynthesisLayer(torch.nn.Module):
             styles = styles * weight_gain
 
         # Execute modulated conv2d.
-        # self.use_fp16 -- False
-        dtype = torch.float16 if (self.use_fp16 and not force_fp32 and x.device.type == 'cuda') else torch.float32
-        x = modulated_conv2d(x=x.to(dtype), w=self.weight, s=styles,
+        # dtype = torch.float16
+        x = modulated_conv2d(x=x, w=self.weight, s=styles,
             padding=self.conv_kernel-1, demodulate=(not self.is_torgb), input_gain=input_gain)
 
         # Execute bias, filtered leaky ReLU, and clamping.
         gain = 1 if self.is_torgb else np.sqrt(2)
         slope = 1 if self.is_torgb else 0.2
-        # xxxx8888
-        x = filtered_lrelu.filtered_lrelu(x=x, fu=self.up_filter, fd=self.down_filter, b=self.bias.to(x.dtype),
-            up=self.up_factor, down=self.down_factor, padding=self.padding, gain=gain, slope=slope, clamp=self.conv_clamp)
-
-        # Ensure correct shape and dtype.
-        # misc.assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
-        assert x.dtype == dtype
+        x = filtered_lrelu(x=x, fu=self.up_filter, fd=self.down_filter, b=self.bias.to(x.dtype),
+            up=self.up_factor, down=self.down_factor, padding=self.padding, gain=gain, slope=slope)
 
         # pdb.set_trace()
 
@@ -564,7 +614,7 @@ class SynthesisNetwork(torch.nn.Module):
         # Execute layers.
         x = self.input(ws[0])
         # print("layer_kwargs ---- ", layer_kwargs)
-        # layer_kwargs ----  {'update_emas': False, 'noise_mode': 'const'}
+        # layer_kwargs ----  {'noise_mode': 'const'}
         for name, w in zip(self.layer_names, ws[1:]):
             x = getattr(self, name)(x, w, **layer_kwargs)
         if self.output_scale != 1:
@@ -611,9 +661,9 @@ class Generator(torch.nn.Module):
         self.mapping = MappingNetwork(z_dim=z_dim, c_dim=c_dim, w_dim=w_dim, num_ws=self.num_ws, **mapping_kwargs)
         # pdb.set_trace()
 
-    def forward(self, z, c, truncation_psi=1, truncation_cutoff=None, update_emas=False, **synthesis_kwargs):
-        ws = self.mapping(z, c, truncation_psi=truncation_psi, truncation_cutoff=truncation_cutoff, update_emas=update_emas)
-        img = self.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
+    def forward(self, z, c, truncation_psi=1, **synthesis_kwargs):
+        ws = self.mapping(z, c, truncation_psi=truncation_psi)
+        img = self.synthesis(ws, **synthesis_kwargs)
         # pp ws.size() -- torch.Size([1, 16, 512])
         # pp img.size() -- torch.Size([1, 3, 1024, 1024])
 
@@ -657,9 +707,8 @@ if __name__ == "__main__":
     label = torch.zeros([1, G.c_dim])
     label = label.cuda()
 
-    for i in range(10):
-        with torch.no_grad():
-            img = G(z, label, truncation_psi=0.7, noise_mode="const")
+    with torch.no_grad():
+        img = G(z, label, truncation_psi=0.75, noise_mode="const")
 
     img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
     PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'out/seed.png')
