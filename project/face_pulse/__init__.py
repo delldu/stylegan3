@@ -28,7 +28,7 @@ import pdb
 def get_model(checkpoint):
     """Create model."""
 
-    model = stylegan3.Generator(img_resolution=1024)
+    model = stylegan3.Generator()
     todos.model.load(model, checkpoint)
     device = todos.model.get_device()
     model = model.to(device)
@@ -81,7 +81,6 @@ def image_predict(rand_seeds, output_dir="output"):
 
     # load model
     checkpoint = os.path.dirname(__file__) + "/models/image_stylegan3.pth"
-    # checkpoint = "/tmp/image_stylegan3.pth"
     model, device = get_model(checkpoint)
 
     progress_bar = tqdm(total=len(rand_seeds))

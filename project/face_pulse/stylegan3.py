@@ -344,9 +344,10 @@ class SynthesisLayer(torch.nn.Module):
         in_half_width,  # Input transition band half-width (f_h).
         out_half_width,  # Output Transition band half-width (f_h).
         # Hyperparameters.
-        conv_kernel=1,  # Convolution kernel size. Ignored for final the ToRGB layer.
+        conv_kernel=3,  # Convolution kernel size. Ignored for final the ToRGB layer.
         filter_size=6,  # Low-pass filter size relative to the lower resolution when up/downsampling.
         lrelu_upsampling=2,  # Relative sampling rate for leaky ReLU. Ignored for final the ToRGB layer.
+        use_radial_filters  = True,    # Use radially symmetric downsampling filter? Ignored for critically sampled layers.
         conv_clamp=256,  # Clamp the output to [-X, +X], None = disable clamping.
     ):
         super().__init__()
@@ -392,8 +393,7 @@ class SynthesisLayer(torch.nn.Module):
         self.down_factor = int(np.rint(self.tmp_sampling_rate / self.out_sampling_rate))
         assert self.out_sampling_rate * self.down_factor == self.tmp_sampling_rate
         self.down_taps = filter_size * self.down_factor if self.down_factor > 1 and not self.is_torgb else 1
-
-        self.down_radial = not self.is_critically_sampled
+        self.down_radial = use_radial_filters and not self.is_critically_sampled
         self.register_buffer(
             "down_filter",
             self.design_lowpass_filter(
@@ -500,8 +500,8 @@ class SynthesisNetwork(torch.nn.Module):
         w_dim,  # Intermediate latent (W) dimensionality.
         img_resolution,  # Output image resolution.
         img_channels,  # Number of color channels.
-        channel_base=32768 * 2,  # Overall multiplier for the number of channels.
-        channel_max=512 * 2,  # Maximum number of channels in any layer.
+        channel_base=32768,  # Overall multiplier for the number of channels.
+        channel_max=512,  # Maximum number of channels in any layer.
         num_layers=14,  # Total number of layers, excluding Fourier features and ToRGB.
         num_critical=2,  # Number of critically sampled layers at the end.
         first_cutoff=2,  # Cutoff frequency of the first layer (f_{c,0}).
@@ -513,6 +513,11 @@ class SynthesisNetwork(torch.nn.Module):
         **layer_kwargs,  # Arguments for SynthesisLayer.
     ):
         super().__init__()
+
+        # For config R
+        channel_base *= 2
+        channel_max *= 2
+
         # w_dim = 512
         # img_resolution = 1024
         # img_channels = 3
