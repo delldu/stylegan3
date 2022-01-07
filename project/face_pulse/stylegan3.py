@@ -26,7 +26,7 @@ def profiled_function(fn):
         torch.cuda.synchronize()        
         spend_time = time.time() - start_time
         if spend_time > 0.01:
-            print(f"{fn.__name__} spend fime: {spend_time:0.5f}")
+            print(f"{fn.__name__} spend time: {spend_time:0.5f}")
         return y
     decorator.__name__ = fn.__name__
     return decorator
@@ -46,57 +46,9 @@ def bias_lrelu_act(x, b=None, alpha=0.2, gain=np.sqrt(2)):
     return x.clamp(-256, 256)
 
 f_cache = dict()
-def upfirdn2d(x, f, up=1, down=1, padding=[0, 0], gain=1):
-    """FIR filter for 2D"""
-
-    # if f is None:
-    #     print("Stupid in upfirdn2d ...")
-    #     f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
-    batch_size, num_channels, in_height, in_width = x.shape
-
-    if len(padding) == 2:
-        padx, pady = padding
-        padding = [padx, padx, pady, pady]
-    padx0, padx1, pady0, pady1 = padding
-
-    # Upsample by inserting zeros.
-    x = x.reshape([batch_size, num_channels, in_height, 1, in_width, 1])
-    x = F.pad(x, [0, up - 1, 0, 0, 0, up - 1])
-    x = x.reshape([batch_size, num_channels, in_height * up, in_width * up])
-
-    # Pad or crop.
-    x = F.pad(x, [max(padx0, 0), max(padx1, 0), max(pady0, 0), max(pady1, 0)])
-    x = x[:, :, max(-pady0, 0) : x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0)]
-
-    # Setup filter.
-    key = (gain, f.ndim, x.dtype, num_channels)
-    if key not in f_cache:
-        # re-calculate f ...
-        f = f * (gain ** (f.ndim / 2))
-        f = f.to(x.dtype)
-        f = f.flip(list(range(f.ndim)))
-        # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
-        f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
-
-        f_cache[key] = f
-    f_value = f_cache[key]
-
-    # Convolve with the filter.
-    if f_value.ndim == 4:
-        x = F.conv2d(input=x, weight=f_value, groups=num_channels)
-    else:
-        x = F.conv2d(input=x, weight=f_value.unsqueeze(2), groups=num_channels)
-        x = F.conv2d(input=x, weight=f_value.unsqueeze(3), groups=num_channels)
-
-    # Downsample by throwing away pixels.
-    return x[:, :, ::down, ::down]
-
 def upfir2d(x, f, up=1, padding=[0, 0], gain=1):
     """Up Sample FIR filter for 2D"""
 
-    # if f is None:
-    #     print("Stupid in upfir2d ...")
-    #     f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
     batch_size, num_channels, in_height, in_width = x.shape
 
     if len(padding) == 2:
@@ -132,18 +84,16 @@ def upfir2d(x, f, up=1, padding=[0, 0], gain=1):
     else:
         x = F.conv2d(input=x, weight=f_value.unsqueeze(2), groups=num_channels)
         x = F.conv2d(input=x, weight=f_value.unsqueeze(3), groups=num_channels)
+
     return x
 
+
 def dnfir2d(x, f, down=1):
-    """Down sample -- FIR filter for 2D"""
+    """Down Sample FIR filter for 2D"""
 
-    # if f is None:
-    #     print("Stupid in dnfir2d ...")
-    #     f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
     batch_size, num_channels, in_height, in_width = x.shape
-
     # Setup filter.
-    gain = 1 
+    gain = 1
     key = (gain, f.ndim, x.dtype, num_channels)
     if key not in f_cache:
         # re-calculate f ...
@@ -166,31 +116,14 @@ def dnfir2d(x, f, down=1):
     # Downsample by throwing away pixels.
     return x[:, :, ::down, ::down]
 
-@profiled_function
+# @profiled_function
 def filtered_lrelu(x, fu=None, fd=None, b=None, up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2):
-    # with torch.autograd.profiler.profile(enabled=True, use_cuda=True, record_shapes=True, profile_memory=True) as prof:
-    #     x = bias_linear_act(x=x, b=b)  # Apply bias.
-    #     x = upfirdn2d(x=x, f=fu, up=up, padding=padding, gain=up ** 2)  # Upsample.
-    #     x = bias_lrelu_act(x=x, alpha=slope, gain=gain)  # Bias, leaky ReLU
-    #     x = upfirdn2d(x=x, f=fd, down=down)  # Downsample.
-    # print(prof.key_averages().table(sort_by="self_cpu_time_total"))    
+    # Slow implement
+    x = bias_linear_act(x=x, b=b)  # Apply bias.
+    x = upfir2d(x=x, f=fu, up=up, padding=padding, gain=up ** 2)  # Upsample.
+    x = bias_lrelu_act(x=x, alpha=slope, gain=gain)  # Bias, leaky ReLU
+    x = dnfir2d(x=x, f=fd, down=down)  # Downsample.
 
-    # 1) x = bias_linear_act(x=x, b=b)  # Apply bias.
-    if b is not None:
-        x = x + b.reshape([-1 if i == 1 else 1 for i in range(x.ndim)])
-    x = x.clamp(-256, 256)
-
-
-    # 2) x = upfirdn2d(x=x, f=fu, up=up, padding=padding, gain=up ** 2)  # Upsample.
-    x = upfir2d(x=x, f=fu, up=up, padding=padding, gain = up ** 2)
-
-    # 3) x = bias_lrelu_act(x=x, alpha=slope, gain=gain)  # Bias, leaky ReLU
-    x = F.leaky_relu(x, slope)
-    x = x * gain
-    x = x.clamp(-256, 256)
-
-    # 4) x = upfirdn2d(x=x, f=fd, down=down)  # Downsample.
-    x = dnfir2d(x=x, f=fd, down=down)
     return x
 
 
@@ -222,9 +155,11 @@ def modulated_conv2d(
         dcoefs = (w.square().sum(dim=[2, 3, 4]) + 1e-8).rsqrt()  # [NO]
         w = w * dcoefs.unsqueeze(2).unsqueeze(3).unsqueeze(4)  # [NOIkk]
 
-    if input_gain is not None:
-        input_gain = input_gain.expand(batch_size, in_channels)  # [NI]
-        w = w * input_gain.unsqueeze(1).unsqueeze(3).unsqueeze(4)  # [NOIkk]
+    # if input_gain is not None:
+    #     input_gain = input_gain.expand(batch_size, in_channels)  # [NI]
+    #     w = w * input_gain.unsqueeze(1).unsqueeze(3).unsqueeze(4)  # [NOIkk]
+    input_gain = input_gain.expand(batch_size, in_channels)  # [NI]
+    w = w * input_gain.unsqueeze(1).unsqueeze(3).unsqueeze(4)  # [NOIkk]
 
     # Execute as one fused op using grouped convolution.
     x = x.reshape(1, -1, *x.shape[2:])
@@ -265,17 +200,19 @@ class FullyConnectedLayer(torch.nn.Module):
 
     def forward(self, x):
         w = self.weight.to(x.dtype) * self.weight_gain
-        b = self.bias
-        if b is not None:
-            b = b.to(x.dtype)
-            if self.bias_gain != 1:
-                b = b * self.bias_gain
+        # b = self.bias
+        # if b is not None:
+        #     b = b.to(x.dtype)
+        #     if self.bias_gain != 1:
+        #         b = b * self.bias_gain
+        b = self.bias * self.bias_gain
 
-        if self.activation == "linear" and b is not None:
+        if self.activation == "linear":
             x = torch.addmm(b.unsqueeze(0), x, w.t())
         else:
             x = x.matmul(w.t())
-            x = bias_linear_act(x, b) if self.activation == "linear" else bias_lrelu_act(x, b)
+            # x = bias_linear_act(x, b) if self.activation == "linear" else bias_lrelu_act(x, b)
+            x = bias_lrelu_act(x, b)
         return x
 
     def extra_repr(self):
@@ -495,6 +432,7 @@ class SynthesisLayer(torch.nn.Module):
             torch.randn([self.out_channels, self.in_channels, self.conv_kernel, self.conv_kernel])
         )
         self.bias = torch.nn.Parameter(torch.zeros([self.out_channels]))
+
         self.register_buffer("magnitude_ema", torch.ones([]))
 
         # Design upsampling filter.
@@ -724,10 +662,10 @@ class SynthesisNetwork(torch.nn.Module):
 
         # Execute layers.
         x = self.input(ws[0])
-        # print("layer_kwargs ---- ", layer_kwargs)
         # layer_kwargs ----  {'noise_mode': 'const'}
         for name, w in zip(self.layer_names, ws[1:]):
             x = getattr(self, name)(x, w, **layer_kwargs)
+
         if self.output_scale != 1:
             x = x * self.output_scale
 
