@@ -82,7 +82,7 @@ def image_predict(rand_seeds, output_dir="output"):
     # load model
     checkpoint = os.path.dirname(__file__) + "/models/image_stylegan3.pth"
     model, device = get_model(checkpoint)
-
+    start_time = time.time()
     progress_bar = tqdm(total=len(rand_seeds))
     for seed in rand_seeds:
         progress_bar.update(1)
@@ -91,7 +91,7 @@ def image_predict(rand_seeds, output_dir="output"):
         img = model_forward(model, device, input_tensor)
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
         Image.fromarray(img[0].cpu().numpy(), "RGB").save(f"{output_dir}/seed_{seed:06d}.png")
-
+    print("Total spend time:", time.time() - start_time)
 
 def video_service(input_file, output_file, targ):
     # load video

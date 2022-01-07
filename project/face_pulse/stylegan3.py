@@ -14,7 +14,22 @@ import scipy.signal
 import torch
 import torch.nn.functional as F
 import pdb
+import time
 
+
+def profiled_function(fn):
+    def decorator(*args, **kwargs):
+        torch.cuda.synchronize()        
+        start_time = time.time()
+        with torch.autograd.profiler.record_function(fn.__name__):
+            y = fn(*args, **kwargs)
+        torch.cuda.synchronize()        
+        spend_time = time.time() - start_time
+        if spend_time > 0.01:
+            print(f"{fn.__name__} spend fime: {spend_time:0.5f}")
+        return y
+    decorator.__name__ = fn.__name__
+    return decorator
 
 def bias_linear_act(x, b=None):
     if b is not None:
@@ -30,12 +45,13 @@ def bias_lrelu_act(x, b=None, alpha=0.2, gain=np.sqrt(2)):
     x = x * gain
     return x.clamp(-256, 256)
 
-
+f_cache = dict()
 def upfirdn2d(x, f, up=1, down=1, padding=[0, 0], gain=1):
     """FIR filter for 2D"""
 
-    if f is None:
-        f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
+    # if f is None:
+    #     print("Stupid in upfirdn2d ...")
+    #     f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
     batch_size, num_channels, in_height, in_width = x.shape
 
     if len(padding) == 2:
@@ -53,29 +69,128 @@ def upfirdn2d(x, f, up=1, down=1, padding=[0, 0], gain=1):
     x = x[:, :, max(-pady0, 0) : x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0)]
 
     # Setup filter.
-    f = f * (gain ** (f.ndim / 2))
-    f = f.to(x.dtype)
-    f = f.flip(list(range(f.ndim)))
+    key = (gain, f.ndim, x.dtype, num_channels)
+    if key not in f_cache:
+        # re-calculate f ...
+        f = f * (gain ** (f.ndim / 2))
+        f = f.to(x.dtype)
+        f = f.flip(list(range(f.ndim)))
+        # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
+        f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
+
+        f_cache[key] = f
+    f_value = f_cache[key]
 
     # Convolve with the filter.
-    # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
-    f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
-    if f.ndim == 4:
-        x = F.conv2d(input=x, weight=f, groups=num_channels)
+    if f_value.ndim == 4:
+        x = F.conv2d(input=x, weight=f_value, groups=num_channels)
     else:
-        x = F.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
-        x = F.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
+        x = F.conv2d(input=x, weight=f_value.unsqueeze(2), groups=num_channels)
+        x = F.conv2d(input=x, weight=f_value.unsqueeze(3), groups=num_channels)
 
     # Downsample by throwing away pixels.
     return x[:, :, ::down, ::down]
 
+def upfir2d(x, f, up=1, padding=[0, 0], gain=1):
+    """Up Sample FIR filter for 2D"""
 
+    # if f is None:
+    #     print("Stupid in upfir2d ...")
+    #     f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
+    batch_size, num_channels, in_height, in_width = x.shape
+
+    if len(padding) == 2:
+        padx, pady = padding
+        padding = [padx, padx, pady, pady]
+    padx0, padx1, pady0, pady1 = padding
+
+    # Upsample by inserting zeros.
+    x = x.reshape([batch_size, num_channels, in_height, 1, in_width, 1])
+    x = F.pad(x, [0, up - 1, 0, 0, 0, up - 1])
+    x = x.reshape([batch_size, num_channels, in_height * up, in_width * up])
+
+    # Pad or crop.
+    x = F.pad(x, [max(padx0, 0), max(padx1, 0), max(pady0, 0), max(pady1, 0)])
+    x = x[:, :, max(-pady0, 0) : x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0)]
+
+    # Setup filter.
+    key = (gain, f.ndim, x.dtype, num_channels)
+    if key not in f_cache:
+        # re-calculate f ...
+        f = f * (gain ** (f.ndim / 2))
+        f = f.to(x.dtype)
+        f = f.flip(list(range(f.ndim)))
+        # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
+        f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
+
+        f_cache[key] = f
+    f_value = f_cache[key]
+
+    # Convolve with the filter.
+    if f_value.ndim == 4:
+        x = F.conv2d(input=x, weight=f_value, groups=num_channels)
+    else:
+        x = F.conv2d(input=x, weight=f_value.unsqueeze(2), groups=num_channels)
+        x = F.conv2d(input=x, weight=f_value.unsqueeze(3), groups=num_channels)
+    return x
+
+def dnfir2d(x, f, down=1):
+    """Down sample -- FIR filter for 2D"""
+
+    # if f is None:
+    #     print("Stupid in dnfir2d ...")
+    #     f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
+    batch_size, num_channels, in_height, in_width = x.shape
+
+    # Setup filter.
+    gain = 1 
+    key = (gain, f.ndim, x.dtype, num_channels)
+    if key not in f_cache:
+        # re-calculate f ...
+        f = f * (gain ** (f.ndim / 2))
+        f = f.to(x.dtype)
+        f = f.flip(list(range(f.ndim)))
+        # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
+        f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
+
+        f_cache[key] = f
+    f_value = f_cache[key]
+
+    # Convolve with the filter.
+    if f_value.ndim == 4:
+        x = F.conv2d(input=x, weight=f_value, groups=num_channels)
+    else:
+        x = F.conv2d(input=x, weight=f_value.unsqueeze(2), groups=num_channels)
+        x = F.conv2d(input=x, weight=f_value.unsqueeze(3), groups=num_channels)
+
+    # Downsample by throwing away pixels.
+    return x[:, :, ::down, ::down]
+
+@profiled_function
 def filtered_lrelu(x, fu=None, fd=None, b=None, up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2):
-    x = bias_linear_act(x=x, b=b)  # Apply bias.
-    x = upfirdn2d(x=x, f=fu, up=up, padding=padding, gain=up ** 2)  # Upsample.
-    x = bias_lrelu_act(x=x, alpha=slope, gain=gain)  # Bias, leaky ReLU
-    x = upfirdn2d(x=x, f=fd, down=down)  # Downsample.
+    # with torch.autograd.profiler.profile(enabled=True, use_cuda=True, record_shapes=True, profile_memory=True) as prof:
+    #     x = bias_linear_act(x=x, b=b)  # Apply bias.
+    #     x = upfirdn2d(x=x, f=fu, up=up, padding=padding, gain=up ** 2)  # Upsample.
+    #     x = bias_lrelu_act(x=x, alpha=slope, gain=gain)  # Bias, leaky ReLU
+    #     x = upfirdn2d(x=x, f=fd, down=down)  # Downsample.
+    # print(prof.key_averages().table(sort_by="self_cpu_time_total"))    
 
+    # 1) x = bias_linear_act(x=x, b=b)  # Apply bias.
+    if b is not None:
+        x = x + b.reshape([-1 if i == 1 else 1 for i in range(x.ndim)])
+    x = x.clamp(-256, 256)
+
+
+    # 2) x = upfirdn2d(x=x, f=fu, up=up, padding=padding, gain=up ** 2)  # Upsample.
+    x = upfir2d(x=x, f=fu, up=up, padding=padding, gain = up ** 2)
+
+    # 3) x = bias_lrelu_act(x=x, alpha=slope, gain=gain)  # Bias, leaky ReLU
+    x = F.leaky_relu(x, slope)
+    x = x * gain
+    x = x.clamp(-256, 256)
+
+    # 4) x = upfirdn2d(x=x, f=fd, down=down)  # Downsample.
+    x = dnfir2d(x=x, f=fd, down=down)
     return x
 
 
@@ -392,6 +507,8 @@ class SynthesisLayer(torch.nn.Module):
                 numtaps=self.up_taps, cutoff=self.in_cutoff, width=self.in_half_width * 2, fs=self.tmp_sampling_rate
             ),
         )
+        if self.up_filter is None:
+            self.up_filter = torch.ones([1, 1], dtype=torch.float32)
 
         # Design downsampling filter.
         self.down_factor = int(np.rint(self.tmp_sampling_rate / self.out_sampling_rate))
@@ -408,6 +525,8 @@ class SynthesisLayer(torch.nn.Module):
                 radial=self.down_radial,
             ),
         )
+        if self.down_filter is None:
+            self.down_filter = torch.ones([1, 1], dtype=torch.float32)
 
         # Compute padding.
         pad_total = (self.out_size - 1) * self.down_factor + 1  # Desired output size before downsampling.
@@ -443,20 +562,17 @@ class SynthesisLayer(torch.nn.Module):
         # Execute bias, filtered leaky ReLU, and clamping.
         gain = 1 if self.is_torgb else np.sqrt(2)
         slope = 1 if self.is_torgb else 0.2
-        y = filtered_lrelu(
-            x=x,
-            fu=self.up_filter,
-            fd=self.down_filter,
-            b=self.bias.to(x.dtype),
-            up=self.up_factor,
-            down=self.down_factor,
-            padding=self.padding,
-            gain=gain,
-            slope=slope,
-        )
-        del x
-        torch.cuda.empty_cache()
-        return y
+        return filtered_lrelu(
+                x=x,
+                fu=self.up_filter,
+                fd=self.down_filter,
+                b=self.bias.to(x.dtype),
+                up=self.up_factor,
+                down=self.down_factor,
+                padding=self.padding,
+                gain=gain,
+                slope=slope,
+            )
 
     @staticmethod
     def design_lowpass_filter(numtaps, cutoff, width, fs, radial=False):
