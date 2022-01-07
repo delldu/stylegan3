@@ -87,8 +87,9 @@ def modulated_conv2d(
     padding=0,  # Padding: int or [padH, padW]
     input_gain=None,  # Optional scale factors for the input channels: [], [in_channels], or [batch_size, in_channels]
 ):
-    # Reduce memory !!!
-    x = x.to(torch.float16)
+    if x.is_cuda:
+        # Reduce memory !!!
+        x = x.to(torch.float16)
 
     batch_size = int(x.shape[0])
     out_channels, in_channels, kh, kw = w.shape
@@ -113,7 +114,6 @@ def modulated_conv2d(
     # Execute as one fused op using grouped convolution.
     x = x.reshape(1, -1, *x.shape[2:])
     w = w.reshape(-1, in_channels, kh, kw)
-
     x = F.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
 
     return x.reshape(batch_size, -1, *x.shape[2:])
@@ -345,13 +345,16 @@ class SynthesisLayer(torch.nn.Module):
         in_half_width,  # Input transition band half-width (f_h).
         out_half_width,  # Output Transition band half-width (f_h).
         # Hyperparameters.
-        conv_kernel=3,  # Convolution kernel size. Ignored for final the ToRGB layer.
+        conv_kernel=1,  # Convolution kernel size. Ignored for final the ToRGB layer.
         filter_size=6,  # Low-pass filter size relative to the lower resolution when up/downsampling.
         lrelu_upsampling=2,  # Relative sampling rate for leaky ReLU. Ignored for final the ToRGB layer.
         use_radial_filters  = True,    # Use radially symmetric downsampling filter? Ignored for critically sampled layers.
         conv_clamp=256,  # Clamp the output to [-X, +X], None = disable clamping.
     ):
         super().__init__()
+
+        # for config R
+        conv_kernel = 1
 
         self.w_dim = w_dim
         self.is_torgb = is_torgb
