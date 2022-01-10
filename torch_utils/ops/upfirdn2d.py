@@ -23,15 +23,14 @@ _plugin = None
 
 def _init():
     global _plugin
-    # if _plugin is None:
-    #     _plugin = custom_ops.get_plugin(
-    #         module_name='upfirdn2d_plugin',
-    #         sources=['upfirdn2d.cpp', 'upfirdn2d.cu'],
-    #         headers=['upfirdn2d.h'],
-    #         source_dir=os.path.dirname(__file__),
-    #         extra_cuda_cflags=['--use_fast_math'],
-    #     )
-    # xxxx8888
+    if _plugin is None:
+        _plugin = custom_ops.get_plugin(
+            module_name='upfirdn2d_plugin',
+            sources=['upfirdn2d.cpp', 'upfirdn2d.cu'],
+            headers=['upfirdn2d.h'],
+            source_dir=os.path.dirname(__file__),
+            extra_cuda_cflags=['--use_fast_math'],
+        )
     return False
 
 def _parse_scaling(scaling):
@@ -202,17 +201,11 @@ def _upfirdn2d_ref(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1):
 
     # Convolve with the filter.
     f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
-    # xxxx8888
-    # if f.ndim == 4:
-    #     x = conv2d_gradfix.conv2d(input=x, weight=f, groups=num_channels)
-    # else:
-    #     x = conv2d_gradfix.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
-    #     x = conv2d_gradfix.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
     if f.ndim == 4:
-        x = F.conv2d(input=x, weight=f, groups=num_channels)
+        x = conv2d_gradfix.conv2d(input=x, weight=f, groups=num_channels)
     else:
-        x = F.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
-        x = F.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
+        x = conv2d_gradfix.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
+        x = conv2d_gradfix.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
 
     # Downsample by throwing away pixels.
     x = x[:, :, ::downy, ::downx]

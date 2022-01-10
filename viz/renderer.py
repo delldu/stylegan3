@@ -17,7 +17,7 @@ import matplotlib.cm
 import dnnlib
 from torch_utils.ops import upfirdn2d
 import legacy # pylint: disable=import-error
-
+import pdb
 #----------------------------------------------------------------------------
 
 class CapturedException(Exception):
@@ -367,7 +367,10 @@ class Renderer:
 
         hooks = [module.register_forward_hook(module_hook) for module in net.modules()]
         try:
+            # pdb.set_trace()
             out = net(*args, **kwargs)
+            # pdb.set_trace()
+
         except CaptureSuccess as e:
             out = e.out
         for hook in hooks:

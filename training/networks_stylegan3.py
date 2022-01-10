@@ -13,10 +13,9 @@ import numpy as np
 import scipy.signal
 # import scipy.optimize
 import torch
-# xxxx8888
 # from torch_utils import misc
 # from torch_utils import persistence
-# from torch_utils.ops import conv2d_gradfix
+from torch_utils.ops import conv2d_gradfix
 from torch_utils.ops import filtered_lrelu
 from torch_utils.ops import bias_act
 import pdb
@@ -69,9 +68,7 @@ def modulated_conv2d(
     x = x.reshape(1, -1, *x.shape[2:])
     w = w.reshape(-1, in_channels, kh, kw)
 
-    # x = conv2d_gradfix.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
-    # xxxx88888
-    x = F.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
+    x = conv2d_gradfix.conv2d(input=x, weight=w.to(x.dtype), padding=padding, groups=batch_size)
 
     x = x.reshape(batch_size, -1, *x.shape[2:])
 
@@ -126,9 +123,7 @@ class FullyConnectedLayer(torch.nn.Module):
             # print("self.activation -- ", self.activation, "x.size() --", x.size(), "b.size() --- ", b.size())
             # self.activation --  lrelu x.size() -- torch.Size([1, 512]) b.size() ---  torch.Size([512])
             x = x.matmul(w.t())
-            # xxxx8888
             x = bias_act.bias_act(x, b, act=self.activation)
-            # x = F.leaky_relu(x, 0.2)
         return x
 
     def extra_repr(self):
@@ -416,7 +411,6 @@ class SynthesisLayer(torch.nn.Module):
         # Execute bias, filtered leaky ReLU, and clamping.
         gain = 1 if self.is_torgb else np.sqrt(2)
         slope = 1 if self.is_torgb else 0.2
-        # xxxx8888
         x = filtered_lrelu.filtered_lrelu(x=x, fu=self.up_filter, fd=self.down_filter, b=self.bias.to(x.dtype),
             up=self.up_factor, down=self.down_factor, padding=self.padding, gain=gain, slope=slope, clamp=self.conv_clamp)
 

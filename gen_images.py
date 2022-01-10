@@ -20,6 +20,7 @@ import torch
 
 import legacy
 import pdb
+import time
 
 #----------------------------------------------------------------------------
 
@@ -115,7 +116,6 @@ def generate_images(
     with dnnlib.util.open_url(network_pkl) as f:
         G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
 
-
     # torch.save(G.state_dict(), "/tmp/image_stylegan3.pth")
     os.makedirs(outdir, exist_ok=True)
 
@@ -132,6 +132,7 @@ def generate_images(
             print ('warn: --class=lbl ignored when running on an unconditional network')
 
     # Generate images.
+    start_time = time.time()
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         # G.z_dim -- 512
@@ -166,7 +167,7 @@ def generate_images(
         # img.size() -- torch.Size([1, 3, 1024, 1024])
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
         PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:04d}.png')
-
+    print("Total spend time: ", time.time() - start_time)
 
 #----------------------------------------------------------------------------
 

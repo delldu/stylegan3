@@ -23,16 +23,15 @@ _plugin = None
 
 def _init():
     global _plugin
-    # if _plugin is None:
-    #     _plugin = custom_ops.get_plugin(
-    #         module_name='filtered_lrelu_plugin',
-    #         sources=['filtered_lrelu.cpp', 'filtered_lrelu_wr.cu', 'filtered_lrelu_rd.cu', 'filtered_lrelu_ns.cu'],
-    #         headers=['filtered_lrelu.h', 'filtered_lrelu.cu'],
-    #         source_dir=os.path.dirname(__file__),
-    #         extra_cuda_cflags=['--use_fast_math'],
-    #     )
-    # xxxx8888
-    return False
+    if _plugin is None:
+        _plugin = custom_ops.get_plugin(
+            module_name='filtered_lrelu_plugin',
+            sources=['filtered_lrelu.cpp', 'filtered_lrelu_wr.cu', 'filtered_lrelu_rd.cu', 'filtered_lrelu_ns.cu'],
+            headers=['filtered_lrelu.h', 'filtered_lrelu.cu'],
+            source_dir=os.path.dirname(__file__),
+            extra_cuda_cflags=['--use_fast_math'],
+        )
+    return True
 
 def _get_filter_size(f):
     if f is None:
@@ -203,8 +202,9 @@ def _filtered_lrelu_cuda(up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2, cl
         @staticmethod
         def forward(ctx, x, fu, fd, b, si, sx, sy): # pylint: disable=arguments-differ
             assert isinstance(x, torch.Tensor) and x.ndim == 4
-
             # Replace empty up/downsample kernels with full 1x1 kernels (faster than separable).
+            # fu.size() -- torch.Size([12])
+            # fd.size() -- torch.Size([12, 12])
             if fu is None:
                 fu = torch.ones([1, 1], dtype=torch.float32, device=x.device)
             if fd is None:
@@ -223,6 +223,7 @@ def _filtered_lrelu_cuda(up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2, cl
                 si = torch.empty([0])
 
             # Missing bias tensor.
+            # pp b.size() -- torch.Size([1024])
             if b is None:
                 b = torch.zeros([x.shape[1]], dtype=x.dtype, device=x.device)
 

@@ -31,29 +31,22 @@ def profiled_function(fn):
     decorator.__name__ = fn.__name__
     return decorator
 
-def bias_linear_act(x, b=None):
-    if b is not None:
-        x = x + b.reshape([-1 if i == 1 else 1 for i in range(x.ndim)])
-    return x.clamp(-256, 256)
-
-
-def bias_lrelu_act(x, b=None, alpha=0.2, gain=np.sqrt(2)):
+def bias_lrelu_act(x, b=None):
     if b is not None:
         x = x + b.reshape([-1 if i == 1 else 1 for i in range(x.ndim)])
 
-    x = F.leaky_relu(x, alpha)
-    x = x * gain
+    x = F.leaky_relu(x, 0.2)
+    x = x * np.sqrt(2)
     return x.clamp(-256, 256)
 
-f_cache = dict()
+
 def upfir2d(x, f, up=1, padding=[0, 0], gain=1):
     """Up Sample FIR filter for 2D"""
-
     batch_size, num_channels, in_height, in_width = x.shape
 
-    if len(padding) == 2:
-        padx, pady = padding
-        padding = [padx, padx, pady, pady]
+    # if len(padding) == 2:
+    #     padx, pady = padding
+    #     padding = [padx, padx, pady, pady]
     padx0, padx1, pady0, pady1 = padding
 
     # Upsample by inserting zeros.
@@ -66,25 +59,27 @@ def upfir2d(x, f, up=1, padding=[0, 0], gain=1):
     x = x[:, :, max(-pady0, 0) : x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0)]
 
     # Setup filter.
-    key = (gain, f.ndim, x.dtype, num_channels)
-    if key not in f_cache:
-        # re-calculate f ...
-        f = f * (gain ** (f.ndim / 2))
-        f = f.to(x.dtype)
-        f = f.flip(list(range(f.ndim)))
-        # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
-        f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
-
-        f_cache[key] = f
-    f_value = f_cache[key]
+    f = f * (gain ** (f.ndim / 2))
+    f = f.to(x.dtype)
+    f = f.flip(list(range(f.ndim)))
+    # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
+    f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
 
     # Convolve with the filter.
-    if f_value.ndim == 4:
-        x = F.conv2d(input=x, weight=f_value, groups=num_channels)
+    if f.ndim == 4:
+        # x.size() -- [1, 3, 1024, 1024]
+        # f.size() -- [3, 1, 1, 1]
+        # num_channels -- 3
+        x = F.conv2d(input=x, weight=f, groups=num_channels)
+        # ==> x.size() -- [1, 3, 1024, 1024]
     else:
-        x = F.conv2d(input=x, weight=f_value.unsqueeze(2), groups=num_channels)
-        x = F.conv2d(input=x, weight=f_value.unsqueeze(3), groups=num_channels)
-
+        # x.size() -- [1, 1024, 93, 93]
+        # f.size(): [1024, 1, 12]-->[1024, 1, 1, 12]
+        # num_channels -- 1024
+        x = F.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
+        # ==> x.size() -- [1, 1024, 93, 82]
+        x = F.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
+        # ==> x.size() -- [1, 1024, 82, 82]
     return x
 
 
@@ -93,25 +88,16 @@ def dnfir2d(x, f, down=1):
 
     batch_size, num_channels, in_height, in_width = x.shape
     # Setup filter.
-    gain = 1
-    key = (gain, f.ndim, x.dtype, num_channels)
-    if key not in f_cache:
-        # re-calculate f ...
-        f = f * (gain ** (f.ndim / 2))
-        f = f.to(x.dtype)
-        f = f.flip(list(range(f.ndim)))
-        # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
-        f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
+    f = f.to(x.dtype)
+    f = f.flip(list(range(f.ndim)))
+    # f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
+    f = f[None, None].repeat([num_channels, 1] + [1] * f.ndim)
 
-        f_cache[key] = f
-    f_value = f_cache[key]
-
-    # Convolve with the filter.
-    if f_value.ndim == 4:
-        x = F.conv2d(input=x, weight=f_value, groups=num_channels)
+    if f.ndim == 4:
+        x = F.conv2d(input=x, weight=f, groups=num_channels)
     else:
-        x = F.conv2d(input=x, weight=f_value.unsqueeze(2), groups=num_channels)
-        x = F.conv2d(input=x, weight=f_value.unsqueeze(3), groups=num_channels)
+        x = F.conv2d(input=x, weight=f.unsqueeze(2), groups=num_channels)
+        x = F.conv2d(input=x, weight=f.unsqueeze(3), groups=num_channels)
 
     # Downsample by throwing away pixels.
     return x[:, :, ::down, ::down]
@@ -119,9 +105,9 @@ def dnfir2d(x, f, down=1):
 # @profiled_function
 def filtered_lrelu(x, fu=None, fd=None, b=None, up=1, down=1, padding=0, gain=np.sqrt(2), slope=0.2):
     # Slow implement
-    x = bias_linear_act(x=x, b=b)  # Apply bias.
+    x = x + b.reshape([-1 if i == 1 else 1 for i in range(x.ndim)])
     x = upfir2d(x=x, f=fu, up=up, padding=padding, gain=up ** 2)  # Upsample.
-    x = bias_lrelu_act(x=x, alpha=slope, gain=gain)  # Bias, leaky ReLU
+    x = F.leaky_relu(x, slope) * gain
     x = dnfir2d(x=x, f=fd, down=down)  # Downsample.
 
     return x
@@ -189,6 +175,7 @@ class FullyConnectedLayer(torch.nn.Module):
         self.bias = torch.nn.Parameter(torch.from_numpy(bias_init / lr_multiplier)) if bias else None
         self.weight_gain = lr_multiplier / np.sqrt(in_features)
         self.bias_gain = lr_multiplier
+
         # self = FullyConnectedLayer(in_features=512, out_features=4, activation=linear)
         # in_features = 512
         # out_features = 4
@@ -211,7 +198,6 @@ class FullyConnectedLayer(torch.nn.Module):
             x = torch.addmm(b.unsqueeze(0), x, w.t())
         else:
             x = x.matmul(w.t())
-            # x = bias_linear_act(x, b) if self.activation == "linear" else bias_lrelu_act(x, b)
             x = bias_lrelu_act(x, b)
         return x
 
@@ -432,7 +418,6 @@ class SynthesisLayer(torch.nn.Module):
             torch.randn([self.out_channels, self.in_channels, self.conv_kernel, self.conv_kernel])
         )
         self.bias = torch.nn.Parameter(torch.zeros([self.out_channels]))
-
         self.register_buffer("magnitude_ema", torch.ones([]))
 
         # Design upsampling filter.
@@ -606,8 +591,10 @@ class SynthesisNetwork(torch.nn.Module):
 
         # Geometric progression of layer cutoffs and min. stopbands.
         last_cutoff = self.img_resolution / 2  # f_{c,N}
+
         last_stopband = last_cutoff * last_stopband_rel  # f_{t,N}
         exponents = np.minimum(np.arange(self.num_layers + 1) / (self.num_layers - self.num_critical), 1)
+
         cutoffs = first_cutoff * (last_cutoff / first_cutoff) ** exponents  # f_c[i]
         stopbands = first_stopband * (last_stopband / first_stopband) ** exponents  # f_t[i]
 
@@ -617,6 +604,13 @@ class SynthesisNetwork(torch.nn.Module):
         sizes = sampling_rates + self.margin_size * 2
         sizes[-2:] = self.img_resolution
         channels = np.rint(np.minimum((channel_base / 2) / cutoffs, channel_max))
+
+        if img_resolution == 256:
+            # Adjust model channels 
+            channels[7] = int(channels[7]/1.414)
+            for i in range(8, self.num_layers):
+                channels[i] = channels[i] // 2
+
         channels[-1] = self.img_channels
 
         # Construct layers.

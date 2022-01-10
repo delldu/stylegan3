@@ -1,0 +1,171 @@
+stylegan3-r-ffhqu-256x256.pkl
+
+Generator(
+  (synthesis): SynthesisNetwork(
+    w_dim=512, num_ws=16,
+    img_resolution=256, img_channels=3,
+    num_layers=14, num_critical=2,
+    margin_size=10, num_fp16_res=4
+    (input): SynthesisInput(
+      w_dim=512, channels=1024, size=[36, 36],
+      sampling_rate=16, bandwidth=2
+      (affine): FullyConnectedLayer(in_features=512, out_features=4, activation=linear)
+    )
+    (L0_36_1024): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=False,
+      in_sampling_rate=16, out_sampling_rate=16,
+      in_cutoff=2, out_cutoff=2,
+      in_half_width=6, out_half_width=6,
+      in_size=[36, 36], out_size=[36, 36],
+      in_channels=1024, out_channels=1024
+      (affine): FullyConnectedLayer(in_features=512, out_features=1024, activation=linear)
+    )
+    (L1_36_1024): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=False,
+      in_sampling_rate=16, out_sampling_rate=16,
+      in_cutoff=2, out_cutoff=2.82843,
+      in_half_width=6, out_half_width=5.17157,
+      in_size=[36, 36], out_size=[36, 36],
+      in_channels=1024, out_channels=1024
+      (affine): FullyConnectedLayer(in_features=512, out_features=1024, activation=linear)
+    )
+    (L2_36_1024): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=False,
+      in_sampling_rate=16, out_sampling_rate=16,
+      in_cutoff=2.82843, out_cutoff=4,
+      in_half_width=5.17157, out_half_width=4,
+      in_size=[36, 36], out_size=[36, 36],
+      in_channels=1024, out_channels=1024
+      (affine): FullyConnectedLayer(in_features=512, out_features=1024, activation=linear)
+    )
+    (L3_52_1024): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=16, out_sampling_rate=32,
+      in_cutoff=4, out_cutoff=5.65685,
+      in_half_width=4, out_half_width=10.3431,
+      in_size=[36, 36], out_size=[52, 52],
+      in_channels=1024, out_channels=1024
+      (affine): FullyConnectedLayer(in_features=512, out_features=1024, activation=linear)
+    )
+    (L4_52_1024): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=32, out_sampling_rate=32,
+      in_cutoff=5.65685, out_cutoff=8,
+      in_half_width=10.3431, out_half_width=8,
+      in_size=[52, 52], out_size=[52, 52],
+      in_channels=1024, out_channels=1024
+      (affine): FullyConnectedLayer(in_features=512, out_features=1024, activation=linear)
+    )
+    (L5_84_1024): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=32, out_sampling_rate=64,
+      in_cutoff=8, out_cutoff=11.3137,
+      in_half_width=8, out_half_width=20.6863,
+      in_size=[52, 52], out_size=[84, 84],
+      in_channels=1024, out_channels=1024
+      (affine): FullyConnectedLayer(in_features=512, out_features=1024, activation=linear)
+    )
+    (L6_84_1024): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=64, out_sampling_rate=64,
+      in_cutoff=11.3137, out_cutoff=16,
+      in_half_width=20.6863, out_half_width=16,
+      in_size=[84, 84], out_size=[84, 84],
+      in_channels=1024, out_channels=1024
+      (affine): FullyConnectedLayer(in_features=512, out_features=1024, activation=linear)
+    )
+    (L7_148_724): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=64, out_sampling_rate=128,
+      in_cutoff=16, out_cutoff=22.6274,
+      in_half_width=16, out_half_width=41.3726,
+      in_size=[84, 84], out_size=[148, 148],
+      in_channels=1024, out_channels=724
+      (affine): FullyConnectedLayer(in_features=512, out_features=1024, activation=linear)
+    )
+    (L8_148_512): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=128, out_sampling_rate=128,
+      in_cutoff=22.6274, out_cutoff=32,
+      in_half_width=41.3726, out_half_width=32,
+      in_size=[148, 148], out_size=[148, 148],
+      in_channels=724, out_channels=512
+      (affine): FullyConnectedLayer(in_features=512, out_features=724, activation=linear)
+    )
+    (L9_148_362): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=128, out_sampling_rate=128,
+      in_cutoff=32, out_cutoff=45.2548,
+      in_half_width=32, out_half_width=18.7452,
+      in_size=[148, 148], out_size=[148, 148],
+      in_channels=512, out_channels=362
+      (affine): FullyConnectedLayer(in_features=512, out_features=512, activation=linear)
+    )
+    (L10_276_256): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=128, out_sampling_rate=256,
+      in_cutoff=45.2548, out_cutoff=64,
+      in_half_width=18.7452, out_half_width=64,
+      in_size=[148, 148], out_size=[276, 276],
+      in_channels=362, out_channels=256
+      (affine): FullyConnectedLayer(in_features=512, out_features=362, activation=linear)
+    )
+    (L11_276_181): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=False, use_fp16=True,
+      in_sampling_rate=256, out_sampling_rate=256,
+      in_cutoff=64, out_cutoff=90.5097,
+      in_half_width=64, out_half_width=37.4903,
+      in_size=[276, 276], out_size=[276, 276],
+      in_channels=256, out_channels=181
+      (affine): FullyConnectedLayer(in_features=512, out_features=256, activation=linear)
+    )
+    (L12_276_128): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=True, use_fp16=True,
+      in_sampling_rate=256, out_sampling_rate=256,
+      in_cutoff=90.5097, out_cutoff=128,
+      in_half_width=37.4903, out_half_width=29.5865,
+      in_size=[276, 276], out_size=[276, 276],
+      in_channels=181, out_channels=128
+      (affine): FullyConnectedLayer(in_features=512, out_features=181, activation=linear)
+    )
+    (L13_256_128): SynthesisLayer(
+      w_dim=512, is_torgb=False,
+      is_critically_sampled=True, use_fp16=True,
+      in_sampling_rate=256, out_sampling_rate=256,
+      in_cutoff=128, out_cutoff=128,
+      in_half_width=29.5865, out_half_width=29.5865,
+      in_size=[276, 276], out_size=[256, 256],
+      in_channels=128, out_channels=128
+      (affine): FullyConnectedLayer(in_features=512, out_features=128, activation=linear)
+    )
+    (L14_256_3): SynthesisLayer(
+      w_dim=512, is_torgb=True,
+      is_critically_sampled=True, use_fp16=True,
+      in_sampling_rate=256, out_sampling_rate=256,
+      in_cutoff=128, out_cutoff=128,
+      in_half_width=29.5865, out_half_width=29.5865,
+      in_size=[256, 256], out_size=[256, 256],
+      in_channels=128, out_channels=3
+      (affine): FullyConnectedLayer(in_features=512, out_features=128, activation=linear)
+    )
+  )
+  (mapping): MappingNetwork(
+    z_dim=512, c_dim=0, w_dim=512, num_ws=16
+    (fc0): FullyConnectedLayer(in_features=512, out_features=512, activation=lrelu)
+    (fc1): FullyConnectedLayer(in_features=512, out_features=512, activation=lrelu)
+  )
+)
+

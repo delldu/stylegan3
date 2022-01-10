@@ -65,7 +65,7 @@ class Visualizer(imgui_window.ImguiWindow):
         self._adjust_font_size()
         self.skip_frame() # Layout may change after first frame.
 
-        pdb.set_trace()
+        # pdb.set_trace()
 
     def close(self):
         super().close()
