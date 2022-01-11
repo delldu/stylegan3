@@ -1,1 +1,2 @@
-4b7538120ee6ef0a6baf986e148a61e4  image_stylegan3.pth
+4b7538120ee6ef0a6baf986e148a61e4  stylegan3_ffhq_1024.pth
+0014b0637791dde7fc70c2bd1c29df06  stylegan3_ffhqu_256.pth

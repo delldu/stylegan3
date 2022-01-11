@@ -1,4 +1,4 @@
-"""Face Pulse Package."""  # coding=utf-8
+"""Face Gan3 Package."""  # coding=utf-8
 #
 # /************************************************************************************
 # ***
@@ -20,21 +20,31 @@ import redos
 import todos
 from PIL import Image
 from . import stylegan3
+from . import projector
 import numpy as np
 
 import pdb
 
+def anchor_latent_space(G):
+    # Thanks to @RiversHaveWings and @nshepperd1
+    if hasattr(G.synthesis, 'input'):
+        shift = G.synthesis.input.affine(G.mapping.w_avg.unsqueeze(0))
+        G.synthesis.input.affine.bias.data.add_(shift.squeeze(0))
+        G.synthesis.input.affine.weight.data.zero_()
 
 def get_model():
-    # checkpoint = os.path.dirname(__file__) + "/models/image_stylegan3.pth"
-    # model = stylegan3.Generator()
-    checkpoint = "/tmp/image_stylegan3.pth"
     model = stylegan3.Generator(img_resolution=256)
+    if model.img_resolution == 256:
+        checkpoint = os.path.dirname(__file__) + "/models/stylegan3_ffhqu_256.pth"
+    else:
+        checkpoint = os.path.dirname(__file__) + "/models/stylegan3_ffhq_1024.pth"
 
     todos.model.load(model, checkpoint)
     device = todos.model.get_device()
     model = model.to(device)
     model.eval()
+
+    anchor_latent_space(model)
 
     # Save device as model attribute
     model.device = device
@@ -46,8 +56,16 @@ def model_forward(model, input_tensor):
     input_tensor = input_tensor.to(model.device)
     label = None
     # torch.zeros([1, model.c_dim]).to(model.device)
+    # input_tensor = np.random.RandomState(seed).randn(1, G.z_dim)
+    # w = model.mapping(input_tensor.to(model.device), None)
+    # w_avg = model.mapping.w_avg
+    # truncation_psi = 0.7
+    # w = w_avg + (w - w_avg) * truncation_psi
+
     with torch.no_grad():
-        output_tensor = model(input_tensor, label, truncation_psi=0.70, noise_mode="const")
+        output_tensor = model(input_tensor, label, truncation_psi=0.7, noise_mode="const")
+        # output_tensor = model.synthesis(w, noise_mode="const")
+
     return output_tensor
 
 
@@ -92,7 +110,21 @@ def image_predict(rand_seeds, output_dir="output"):
         input_tensor = torch.from_numpy(np.random.RandomState(seed).randn(1, model.z_dim))
 
         img = model_forward(model, input_tensor)
-        img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
+        img = (img.permute(0, 2, 3, 1) * 255.0).clamp(0, 255).to(torch.uint8)
         Image.fromarray(img[0].cpu().numpy(), "RGB").save(f"{output_dir}/seed_{seed:06d}.png")
     print("Total spend time:", time.time() - start_time)
+
+
+def image_projector(input_file, output_file):
+    # load model
+    model = get_model()
+    device = model.device
+
+    input_tensor = todos.data.load_tensor(input_file)
+    input_tensor = input_tensor.to(device)
+    ws = projector.best_wscode(model, input_tensor, num_steps=100)
+    with torch.no_grad():
+        output_tensor = model.synthesis(ws, noise_mode='const')
+
+    todos.data.save_tensor(output_tensor, output_file)
 

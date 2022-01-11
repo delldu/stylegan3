@@ -16,7 +16,6 @@ import torch.nn.functional as F
 import pdb
 import time
 
-
 def profiled_function(fn):
     def decorator(*args, **kwargs):
         torch.cuda.synchronize()        
@@ -665,6 +664,7 @@ class SynthesisNetwork(torch.nn.Module):
 
         # Ensure correct shape and dtype.
         # misc.assert_shape(x, [None, self.img_channels, self.img_resolution, self.img_resolution])
+        x = (x + 1.0)/2.0
         return x.to(torch.float32)
 
     def extra_repr(self):
