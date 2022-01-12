@@ -105,6 +105,7 @@ class EquivarianceWidget:
             pos = np.rint(pos * viz.result.img_resolution) / viz.result.img_resolution
         angle = self.rotate.val * np.pi * 2
 
+        # print("EquivarianceWidget angle = ", angle, "pos = tx, ty: ", pos[0], pos[1])
         viz.args.input_transform = [
             [np.cos(angle),  np.sin(angle), pos[0]],
             [-np.sin(angle), np.cos(angle), pos[1]],

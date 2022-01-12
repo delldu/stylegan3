@@ -237,7 +237,10 @@ class MappingNetwork(torch.nn.Module):
             setattr(self, f"fc{idx}", layer)
         self.register_buffer("w_avg", torch.zeros([w_dim]))
 
-    def forward(self, z, c, truncation_psi=1):
+    def forward(self, z, c, truncation_psi=1, truncation_cutoff=None):
+        if truncation_cutoff is None:
+            truncation_cutoff = self.num_ws
+            
         # Embed, normalize, and concatenate inputs.
         x = z.to(torch.float32)
         x = x * (x.square().mean(1, keepdim=True) + 1e-8).rsqrt()
@@ -249,7 +252,7 @@ class MappingNetwork(torch.nn.Module):
         # Broadcast and apply truncation.
         x = x.unsqueeze(1).repeat([1, self.num_ws, 1])
         if truncation_psi != 1:
-            x[:, : self.num_ws] = self.w_avg.lerp(x[:, : self.num_ws], truncation_psi)
+            x[:, : truncation_cutoff] = self.w_avg.lerp(x[:, : truncation_cutoff], truncation_psi)
 
         return x
 

@@ -122,7 +122,7 @@ def image_projector(input_file, output_file):
 
     input_tensor = todos.data.load_tensor(input_file)
     input_tensor = input_tensor.to(device)
-    ws = projector.best_wscode(model, input_tensor, num_steps=100)
+    ws = projector.best_wscode(model, input_tensor, num_steps=200)
     with torch.no_grad():
         output_tensor = model.synthesis(ws, noise_mode='const')
 

@@ -368,6 +368,7 @@ class Renderer:
         hooks = [module.register_forward_hook(module_hook) for module in net.modules()]
         try:
             # pdb.set_trace()
+            print("forwarding ... kwargs -- ", kwargs)
             out = net(*args, **kwargs)
             # pdb.set_trace()
 

@@ -101,7 +101,8 @@ class Visualizer(imgui_window.ImguiWindow):
 
     def _adjust_font_size(self):
         old = self.font_size
-        self.set_font_size(min(self.content_width / 120, self.content_height / 60))
+        # self.set_font_size(min(self.content_width / 120, self.content_height / 60))
+        self.set_font_size(min(self.content_width / 90, self.content_height / 40))
         if self.font_size != old:
             self.skip_frame() # Layout changed.
 
