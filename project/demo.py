@@ -1,4 +1,4 @@
-import face_pulse
+import face_gan3
 
 # rand_seeds = [
 #     42,
@@ -20,6 +20,7 @@ import face_pulse
 #     300000,
 #     500000,
 # ]
-# face_pulse.image_predict(rand_seeds, output_dir="output")
+# face_gan3.image_predict(rand_seeds, output_dir="output")
 
-face_pulse.image_projector("/tmp/dell.png", "/tmp/dell_hr.png")
+# face_gan3.image_projector("/tmp/dell.png", "/tmp/dell_hr.png")
+d = face_gan3.decoder()

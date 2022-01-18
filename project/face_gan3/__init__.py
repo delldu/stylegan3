@@ -19,11 +19,40 @@ import torch
 import redos
 import todos
 from PIL import Image
-from . import stylegan3
-from . import projector
+from .stylegan3 import Generator
+from .encoder import GradualStyleEncoder
+
 import numpy as np
 
 import pdb
+
+
+
+def decoder():
+    """The model comes from stylegan3-t-ffhq-1024x1024.pkl."""
+    cdir = os.path.dirname(__file__)
+    model_path = "models/stylegan3_decoder.pth"
+    checkpoint = model_path if cdir == "" else cdir + "/" + model_path
+
+    model = Generator(img_resolution=1024)
+    model.load_state_dict(torch.load(checkpoint))
+    model.eval()
+    # anchor_latent_space(model)
+
+    return model
+
+def encoder():
+    """The model encoder W for stylegan3-t-ffhq-1024x1024.pkl."""
+    cdir = os.path.dirname(__file__)
+    model_path = "models/stylegan3_encoder.pth"
+    checkpoint = model_path if cdir == "" else cdir + "/" + model_path
+
+    model = GradualStyleEncoder()
+    # model.load_state_dict(torch.load(checkpoint, map_location='cpu'))
+    model.load_state_dict(torch.load(checkpoint))
+
+    model = model.eval()
+    return model
 
 def anchor_latent_space(G):
     # Thanks to @RiversHaveWings and @nshepperd1
@@ -31,25 +60,6 @@ def anchor_latent_space(G):
         shift = G.synthesis.input.affine(G.mapping.w_avg.unsqueeze(0))
         G.synthesis.input.affine.bias.data.add_(shift.squeeze(0))
         G.synthesis.input.affine.weight.data.zero_()
-
-def get_model():
-    model = stylegan3.Generator(img_resolution=256)
-    if model.img_resolution == 256:
-        checkpoint = os.path.dirname(__file__) + "/models/stylegan3_ffhqu_256.pth"
-    else:
-        checkpoint = os.path.dirname(__file__) + "/models/stylegan3_ffhq_1024.pth"
-
-    todos.model.load(model, checkpoint)
-    device = todos.model.get_device()
-    model = model.to(device)
-    model.eval()
-
-    anchor_latent_space(model)
-
-    # Save device as model attribute
-    model.device = device
-
-    return model
 
 
 def model_forward(model, input_tensor):
@@ -82,10 +92,10 @@ def image_client(name, input_files, output_dir):
 
 def image_server(name, HOST="localhost", port=6379):
     # load model
-    model = get_model()
+    model = decoder()
 
     def do_service(input_file, output_file, targ):
-        print(f"  clean {input_file} ...")
+        print(f"  face zoom {input_file} ...")
         try:
             input_tensor = todos.data.load_tensor(input_file)
             output_tensor = model_forward(model, input_tensor)
@@ -94,7 +104,7 @@ def image_server(name, HOST="localhost", port=6379):
         except:
             return False
 
-    return redos.image.service(name, "image_weather", do_service, HOST, port)
+    return redos.image.service(name, "face_zoom", do_service, HOST, port)
 
 
 def image_predict(rand_seeds, output_dir="output"):
@@ -102,7 +112,7 @@ def image_predict(rand_seeds, output_dir="output"):
     todos.data.mkdir(output_dir)
 
     # load model
-    model = get_model()
+    model = decoder()
     start_time = time.time()
     progress_bar = tqdm(total=len(rand_seeds))
     for seed in rand_seeds:
@@ -117,12 +127,12 @@ def image_predict(rand_seeds, output_dir="output"):
 
 def image_projector(input_file, output_file):
     # load model
-    model = get_model()
+    model = decoder()
     device = model.device
 
     input_tensor = todos.data.load_tensor(input_file)
     input_tensor = input_tensor.to(device)
-    ws = projector.best_wscode(model, input_tensor, num_steps=200)
+    ws = projector.best_wscode(model, input_tensor, num_steps=1000)
     with torch.no_grad():
         output_tensor = model.synthesis(ws, noise_mode='const')
 

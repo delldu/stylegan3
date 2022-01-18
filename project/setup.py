@@ -15,16 +15,16 @@ with open("README.md", "r") as file:
     long_description = file.read()
 
 setup(
-    name="face_pulse",
+    name="face_gan3",
     version="1.0.0",
     author="Dell Du",
     author_email="18588220928@163.com",
-    description="face pulse package",
+    description="face gan3 package",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/delldu/stylegan3",
-    packages=["face_pulse"],
-    package_data={"face_pulse": ["models/image_stylegan3.pth"]},
+    packages=["face_gan3"],
+    package_data={"face_gan3": ["models/stylegan3_decoder.pth", "models/stylegan3_encoder.pth"]},
     include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",

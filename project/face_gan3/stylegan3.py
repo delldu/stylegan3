@@ -385,16 +385,19 @@ class SynthesisLayer(torch.nn.Module):
         in_half_width,  # Input transition band half-width (f_h).
         out_half_width,  # Output Transition band half-width (f_h).
         # Hyperparameters.
-        conv_kernel=1,  # Convolution kernel size. Ignored for final the ToRGB layer.
+        conv_kernel=3,  # Convolution kernel size. Ignored for final the ToRGB layer.
         filter_size=6,  # Low-pass filter size relative to the lower resolution when up/downsampling.
         lrelu_upsampling=2,  # Relative sampling rate for leaky ReLU. Ignored for final the ToRGB layer.
-        use_radial_filters  = True,    # Use radially symmetric downsampling filter? Ignored for critically sampled layers.
+        use_radial_filters  = False,    # Use radially symmetric downsampling filter? Ignored for critically sampled layers.
         conv_clamp=256,  # Clamp the output to [-X, +X], None = disable clamping.
+        config_r = False
     ):
         super().__init__()
 
         # for config R
-        conv_kernel = 1
+        if config_r:
+            conv_kernel = 1
+            use_radial_filters = True
 
         self.w_dim = w_dim
         self.is_torgb = is_torgb
@@ -432,8 +435,6 @@ class SynthesisLayer(torch.nn.Module):
                 numtaps=self.up_taps, cutoff=self.in_cutoff, width=self.in_half_width * 2, fs=self.tmp_sampling_rate
             ),
         )
-        if self.up_filter is None:
-            self.up_filter = torch.ones([1, 1], dtype=torch.float32)
 
         # Design downsampling filter.
         self.down_factor = int(np.rint(self.tmp_sampling_rate / self.out_sampling_rate))
@@ -450,8 +451,6 @@ class SynthesisLayer(torch.nn.Module):
                 radial=self.down_radial,
             ),
         )
-        if self.down_filter is None:
-            self.down_filter = torch.ones([1, 1], dtype=torch.float32)
 
         # Compute padding.
         pad_total = (self.out_size - 1) * self.down_factor + 1  # Desired output size before downsampling.
@@ -464,6 +463,12 @@ class SynthesisLayer(torch.nn.Module):
 
     def forward(self, x, w, noise_mode="random"):
         assert noise_mode in ["random", "const", "none"]  # unused
+
+        if self.up_filter is None:
+            self.up_filter = torch.ones([1, 1], dtype=torch.float32).to(x.device)
+
+        if self.down_filter is None:
+            self.down_filter = torch.ones([1, 1], dtype=torch.float32).to(x.device)
 
         # Track input magnitude.
         input_gain = self.magnitude_ema.rsqrt()
@@ -558,13 +563,15 @@ class SynthesisNetwork(torch.nn.Module):
         margin_size=10,  # Number of additional pixels outside the image.
         output_scale=0.25,  # Scale factor for the output image.
         num_fp16_res=4,  # Use FP16 for the N highest resolutions.
+        config_r = False,
         **layer_kwargs,  # Arguments for SynthesisLayer.
     ):
         super().__init__()
 
         # For config R
-        channel_base *= 2
-        channel_max *= 2
+        if config_r:
+            channel_base *= 2
+            channel_max *= 2
 
         # w_dim = 512
         # img_resolution = 1024
@@ -646,6 +653,7 @@ class SynthesisNetwork(torch.nn.Module):
                 out_cutoff=cutoffs[idx],
                 in_half_width=half_widths[prev],
                 out_half_width=half_widths[idx],
+                config_r = config_r,
                 **layer_kwargs,
             )
             name = f"L{idx}_{layer.out_size[0]}_{layer.out_channels}"
@@ -668,7 +676,7 @@ class SynthesisNetwork(torch.nn.Module):
         # Ensure correct shape and dtype.
         # misc.assert_shape(x, [None, self.img_channels, self.img_resolution, self.img_resolution])
         x = (x + 1.0)/2.0
-        return x.to(torch.float32)
+        return x.to(torch.float32).clamp(0, 1.0)
 
     def extra_repr(self):
         return "\n".join(
@@ -690,6 +698,7 @@ class Generator(torch.nn.Module):
         img_resolution=1024,  # Output resolution.
         img_channels=3,  # Number of output color channels.
         mapping_kwargs={},  # Arguments for MappingNetwork.
+        config_r = False,
         **synthesis_kwargs,  # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -699,7 +708,7 @@ class Generator(torch.nn.Module):
         self.img_resolution = img_resolution
         self.img_channels = img_channels
         self.synthesis = SynthesisNetwork(
-            w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, **synthesis_kwargs
+            w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, config_r=config_r, **synthesis_kwargs
         )
         self.num_ws = self.synthesis.num_ws
         # self.num_ws -- 16
