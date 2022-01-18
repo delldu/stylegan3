@@ -22,7 +22,7 @@ setup(
     description="face gan3 package",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/delldu/stylegan3",
+    url="https://github.com/delldu/stylegan3, https://github.com/delldu/stylegan3-encoder",
     packages=["face_gan3"],
     package_data={"face_gan3": ["models/stylegan3_decoder.pth", "models/stylegan3_encoder.pth"]},
     include_package_data=True,

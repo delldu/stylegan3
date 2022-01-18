@@ -99,20 +99,18 @@ def image_client(name, input_files, output_dir):
 
 def image_server(name, HOST="localhost", port=6379):
     device = todos.model.get_device()
-    # load model
-    decoder_model = decoder()
-    decoder_model = decoder_model.to(device)
 
-    encoder_model = encoder()
-    encoder_model = encoder_model.to(device)
+    # load models
+    E = encoder().to(device)
+    D = decoder().to(device)
 
     def do_service(input_file, output_file, targ):
         print(f"  face zoom {input_file} ...")
         try:
             input_tensor = load_tensor(input_file)
             with torch.no_grad():
-                w = encoder_model(input_tensor)
-                output_tensor = decoder_model.synthesis(w)
+                w = E(input_tensor)
+                output_tensor = D.synthesis(w)
             save_tensor(output_tensor, output_file)
             return True
         except:
@@ -127,16 +125,15 @@ def sample(rand_seeds, output_dir="output"):
     device = todos.model.get_device()
 
     # load model
-    decoder_model = decoder()
-    decoder_model = decoder_model.to(device)
+    D = decoder().to(device)
 
     start_time = time.time()
     progress_bar = tqdm(total=len(rand_seeds))
     for seed in rand_seeds:
         progress_bar.update(1)
-        input_tensor = torch.from_numpy(np.random.RandomState(seed).randn(1, model.z_dim))
+        input_tensor = torch.from_numpy(np.random.RandomState(seed).randn(1, D.z_dim))
 
-        output_tensor = model_forward(decoder_model, device, input_tensor)
+        output_tensor = model_forward(D, device, input_tensor)
         save_tensor(output_tensor, f"{output_dir}/seed_{seed:06d}.png")
     print("Total spend time:", time.time() - start_time)
 
@@ -144,16 +141,78 @@ def sample(rand_seeds, output_dir="output"):
 def project(input_file, output_file):
     device = todos.model.get_device()
 
-    # load model
-    decoder_model = decoder()
-    decoder_model = decoder_model.to(device)
-
-    encoder_model = encoder()
-    encoder_model = encoder_model.to(device)
+    # load models
+    E = encoder().to(device)
+    D = decoder().to(device)
     
     input_tensor = load_tensor(input_file).to(device)
     with torch.no_grad():
-        w = encoder_model(input_tensor)
-        output_tensor = decoder_model.synthesis(w)
+        w = E(input_tensor)
+        output_tensor = D.synthesis(w)
     save_tensor(output_tensor, output_file)
 
+
+def factorize(G):
+    """Factorizes the generator weight to get semantics boundaries.
+    Returns:
+        A tuple of (semantic_boundaries, eigen_values).
+    """
+    # G = decoder()
+    weights = []
+    for layer_name in G.synthesis.layer_names:
+        weight = G.synthesis.__getattr__(layer_name).affine.weight.T
+        # print(layer_name, weight.shape)
+        weights.append(weight.cpu().detach().numpy())
+
+    weight = np.concatenate(weights, axis=1).astype(np.float32) # weight.shape -- (512, 4946)
+
+    weight = weight / np.linalg.norm(weight, axis=0, keepdims=True)
+    eigen_values, eigen_vectors = np.linalg.eig(weight.dot(weight.T))
+    # eigen_vectors.T.shape -- (512, 512)
+    # eigen_values.shape -- (512,), descend
+    return eigen_vectors.T, eigen_values
+
+
+def sefa(rand_seeds, output_dir="output"):
+    import copy
+
+    # Create directory to store result
+    todos.data.mkdir(output_dir)
+    device = todos.model.get_device()
+
+    # load model
+    D = decoder().to(device)
+
+    boundaries, values = factorize(D)
+    attribute_id = 2
+    boundary = boundaries[attribute_id:attribute_id+1]
+    distances = np.linspace(-10, 10, 7)
+
+    start_time = time.time()
+    progress_bar = tqdm(total=len(rand_seeds))
+    for seed in rand_seeds:
+        progress_bar.update(1)
+        z = torch.from_numpy(np.random.RandomState(seed).randn(1, D.z_dim))
+        label = torch.zeros([1,D.c_dim])
+        with torch.no_grad():
+            w = D.mapping(z.to(device), label.to(device), truncation_psi=0.7)
+        codes = w.detach().cpu().numpy()
+        del w
+        torch.cuda.empty_cache()
+
+        index = 0
+        for d in distances:
+            temp_code = copy.deepcopy(codes)
+            temp_code[:,[attribute_id, attribute_id + 1],:] += boundary * d
+
+            with torch.no_grad():
+                output_tensor = D.synthesis(torch.from_numpy(temp_code).to(device))
+            # model_forward(D, device, temp_code)
+            save_tensor(output_tensor, f"{output_dir}/sefa_{seed:06d}_{index:02d}.png")
+
+            del output_tensor
+            torch.cuda.empty_cache()
+
+            index += 1
+
+    print("Total spend time:", time.time() - start_time)

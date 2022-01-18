@@ -12,6 +12,7 @@
 import numpy as np
 import scipy.signal
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import pdb
 import time
@@ -154,7 +155,7 @@ def modulated_conv2d(
     return x.reshape(batch_size, -1, *x.shape[2:])
 
 
-class FullyConnectedLayer(torch.nn.Module):
+class FullyConnectedLayer(nn.Module):
     def __init__(
         self,
         in_features,  # Number of input features.
@@ -204,7 +205,7 @@ class FullyConnectedLayer(torch.nn.Module):
         return f"in_features={self.in_features:d}, out_features={self.out_features:d}, activation={self.activation:s}"
 
 
-class MappingNetwork(torch.nn.Module):
+class MappingNetwork(nn.Module):
     def __init__(
         self,
         z_dim,  # Input latent (Z) dimensionality.
@@ -260,7 +261,7 @@ class MappingNetwork(torch.nn.Module):
         return f"z_dim={self.z_dim:d}, c_dim={self.c_dim:d}, w_dim={self.w_dim:d}, num_ws={self.num_ws:d}"
 
 
-class SynthesisInput(torch.nn.Module):
+class SynthesisInput(nn.Module):
     def __init__(
         self,
         w_dim,  # Intermediate latent (W) dimensionality.
@@ -366,7 +367,7 @@ class SynthesisInput(torch.nn.Module):
         )
 
 
-class SynthesisLayer(torch.nn.Module):
+class SynthesisLayer(nn.Module):
     def __init__(
         self,
         w_dim,  # Intermediate latent (W) dimensionality.
@@ -547,7 +548,7 @@ class SynthesisLayer(torch.nn.Module):
         )
 
 
-class SynthesisNetwork(torch.nn.Module):
+class SynthesisNetwork(nn.Module):
     def __init__(
         self,
         w_dim,  # Intermediate latent (W) dimensionality.
@@ -689,7 +690,7 @@ class SynthesisNetwork(torch.nn.Module):
         )
 
 
-class Generator(torch.nn.Module):
+class Generator(nn.Module):
     def __init__(
         self,
         z_dim=512,  # Input latent (Z) dimensionality.
