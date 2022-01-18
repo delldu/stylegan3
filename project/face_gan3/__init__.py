@@ -15,7 +15,7 @@ import os
 import time
 from tqdm import tqdm
 import torch
-
+import torchvision.transforms as T
 import redos
 import todos
 from PIL import Image
@@ -26,6 +26,18 @@ import numpy as np
 
 import pdb
 
+def load_tensor(input_file):
+    image = Image.open(input_file).convert("RGB").resize((256, 256))
+    transform = T.Compose([
+        T.Resize((256, 256)),
+        T.ToTensor(),
+        T.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
+    input_tensor = transform(image).unsqueeze(0)
+    return input_tensor
+
+def save_tensor(output_tensor, output_file):
+    output_tensor = (output_tensor.permute(0, 2, 3, 1) * 255.0).clamp(0, 255).to(torch.uint8)
+    Image.fromarray(output_tensor[0].cpu().numpy(), "RGB").save(output_file)
 
 
 def decoder():
@@ -37,7 +49,7 @@ def decoder():
     model = Generator(img_resolution=1024)
     model.load_state_dict(torch.load(checkpoint))
     model.eval()
-    # anchor_latent_space(model)
+    anchor_latent_space(model)
 
     return model
 
@@ -50,8 +62,8 @@ def encoder():
     model = GradualStyleEncoder()
     # model.load_state_dict(torch.load(checkpoint, map_location='cpu'))
     model.load_state_dict(torch.load(checkpoint))
-
     model = model.eval()
+
     return model
 
 def anchor_latent_space(G):
@@ -62,16 +74,11 @@ def anchor_latent_space(G):
         G.synthesis.input.affine.weight.data.zero_()
 
 
-def model_forward(model, input_tensor):
-    input_tensor = input_tensor.to(model.device)
+def model_forward(model, device, input_tensor):
+    input_tensor = input_tensor.to(device)
     label = None
-    # torch.zeros([1, model.c_dim]).to(model.device)
-    # input_tensor = np.random.RandomState(seed).randn(1, G.z_dim)
-    # w = model.mapping(input_tensor.to(model.device), None)
-    # w_avg = model.mapping.w_avg
     # truncation_psi = 0.7
     # w = w_avg + (w - w_avg) * truncation_psi
-
     with torch.no_grad():
         output_tensor = model(input_tensor, label, truncation_psi=0.7, noise_mode="const")
         # output_tensor = model.synthesis(w, noise_mode="const")
@@ -91,15 +98,22 @@ def image_client(name, input_files, output_dir):
 
 
 def image_server(name, HOST="localhost", port=6379):
+    device = todos.model.get_device()
     # load model
-    model = decoder()
+    decoder_model = decoder()
+    decoder_model = decoder_model.to(device)
+
+    encoder_model = encoder()
+    encoder_model = encoder_model.to(device)
 
     def do_service(input_file, output_file, targ):
         print(f"  face zoom {input_file} ...")
         try:
-            input_tensor = todos.data.load_tensor(input_file)
-            output_tensor = model_forward(model, input_tensor)
-            todos.data.save_tensor(output_tensor, output_file)
+            input_tensor = load_tensor(input_file)
+            with torch.no_grad():
+                w = encoder_model(input_tensor)
+                output_tensor = decoder_model.synthesis(w)
+            save_tensor(output_tensor, output_file)
             return True
         except:
             return False
@@ -107,34 +121,39 @@ def image_server(name, HOST="localhost", port=6379):
     return redos.image.service(name, "face_zoom", do_service, HOST, port)
 
 
-def image_predict(rand_seeds, output_dir="output"):
+def sample(rand_seeds, output_dir="output"):
     # Create directory to store result
     todos.data.mkdir(output_dir)
+    device = todos.model.get_device()
 
     # load model
-    model = decoder()
+    decoder_model = decoder()
+    decoder_model = decoder_model.to(device)
+
     start_time = time.time()
     progress_bar = tqdm(total=len(rand_seeds))
     for seed in rand_seeds:
         progress_bar.update(1)
         input_tensor = torch.from_numpy(np.random.RandomState(seed).randn(1, model.z_dim))
 
-        img = model_forward(model, input_tensor)
-        img = (img.permute(0, 2, 3, 1) * 255.0).clamp(0, 255).to(torch.uint8)
-        Image.fromarray(img[0].cpu().numpy(), "RGB").save(f"{output_dir}/seed_{seed:06d}.png")
+        output_tensor = model_forward(decoder_model, device, input_tensor)
+        save_tensor(output_tensor, f"{output_dir}/seed_{seed:06d}.png")
     print("Total spend time:", time.time() - start_time)
 
 
-def image_projector(input_file, output_file):
+def project(input_file, output_file):
+    device = todos.model.get_device()
+
     # load model
-    model = decoder()
-    device = model.device
+    decoder_model = decoder()
+    decoder_model = decoder_model.to(device)
 
-    input_tensor = todos.data.load_tensor(input_file)
-    input_tensor = input_tensor.to(device)
-    ws = projector.best_wscode(model, input_tensor, num_steps=1000)
+    encoder_model = encoder()
+    encoder_model = encoder_model.to(device)
+    
+    input_tensor = load_tensor(input_file).to(device)
     with torch.no_grad():
-        output_tensor = model.synthesis(ws, noise_mode='const')
-
-    todos.data.save_tensor(output_tensor, output_file)
+        w = encoder_model(input_tensor)
+        output_tensor = decoder_model.synthesis(w)
+    save_tensor(output_tensor, output_file)
 

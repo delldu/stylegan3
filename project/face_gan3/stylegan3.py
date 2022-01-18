@@ -660,15 +660,14 @@ class SynthesisNetwork(torch.nn.Module):
             setattr(self, name, layer)
             self.layer_names.append(name)
 
-    def forward(self, ws, **layer_kwargs):
+    def forward(self, ws):
         # misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
         ws = ws.to(torch.float32).unbind(dim=1)
 
         # Execute layers.
         x = self.input(ws[0])
-        # layer_kwargs ----  {'noise_mode': 'const'}
         for name, w in zip(self.layer_names, ws[1:]):
-            x = getattr(self, name)(x, w, **layer_kwargs)
+            x = getattr(self, name)(x, w)
 
         if self.output_scale != 1:
             x = x * self.output_scale
@@ -676,7 +675,8 @@ class SynthesisNetwork(torch.nn.Module):
         # Ensure correct shape and dtype.
         # misc.assert_shape(x, [None, self.img_channels, self.img_resolution, self.img_resolution])
         x = (x + 1.0)/2.0
-        return x.to(torch.float32).clamp(0, 1.0)
+        # return x.to(torch.float32).clamp(0, 1.0)
+        return x.to(torch.float32)
 
     def extra_repr(self):
         return "\n".join(
