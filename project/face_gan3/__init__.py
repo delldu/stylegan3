@@ -49,7 +49,7 @@ def decoder():
     model = Generator(img_resolution=1024)
     model.load_state_dict(torch.load(checkpoint))
     model.eval()
-    anchor_latent_space(model)
+    # anchor_latent_space(model)
 
     return model
 
@@ -66,12 +66,12 @@ def encoder():
 
     return model
 
-def anchor_latent_space(G):
-    # Thanks to @RiversHaveWings and @nshepperd1
-    if hasattr(G.synthesis, 'input'):
-        shift = G.synthesis.input.affine(G.mapping.w_avg.unsqueeze(0))
-        G.synthesis.input.affine.bias.data.add_(shift.squeeze(0))
-        G.synthesis.input.affine.weight.data.zero_()
+# def anchor_latent_space(G):
+#     # Thanks to @RiversHaveWings and @nshepperd1
+#     if hasattr(G.synthesis, 'input'):
+#         shift = G.synthesis.input.affine(G.mapping.w_avg.unsqueeze(0))
+#         G.synthesis.input.affine.bias.data.add_(shift.squeeze(0))
+#         G.synthesis.input.affine.weight.data.zero_()
 
 
 def model_forward(model, device, input_tensor):
@@ -203,20 +203,18 @@ def sefa(rand_seeds, output_dir="output"):
         codes = w.detach().cpu().numpy()
         del w
         torch.cuda.empty_cache()
-        
+
         index = 0
         attribute_id = 1
 
-        # for d in distances:
-        for attribute_id in range(9):
-            for dir in [0, 1, 2]:
-                boundary = boundaries[attribute_id:attribute_id+1]
-                temp_code = copy.deepcopy(codes)
-                temp_code[:,[attribute_id, attribute_id + 1],:] += 5.0 * boundary * (dir - 1)
-                with torch.no_grad():
-                    output_tensor = D.synthesis(torch.from_numpy(temp_code).to(device))
-                # model_forward(D, device, temp_code)
-                save_tensor(output_tensor, f"{output_dir}/sefa_{seed:06d}_{attribute_id:02d}_{dir:02d}.png")
+        for d in distances:
+            boundary = boundaries[attribute_id:attribute_id+1]
+            temp_code = copy.deepcopy(codes)
+            temp_code[:,[attribute_id, attribute_id + 1],:] += d * boundary
+            with torch.no_grad():
+                output_tensor = D.synthesis(torch.from_numpy(temp_code).to(device))
+            # model_forward(D, device, temp_code)
+            save_tensor(output_tensor, f"{output_dir}/sefa_{seed:06d}_{index:02d}.png")
 
             del output_tensor
             torch.cuda.empty_cache()
