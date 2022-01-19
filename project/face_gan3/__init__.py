@@ -157,11 +157,9 @@ def factorize(G):
     Returns:
         A tuple of (semantic_boundaries, eigen_values).
     """
-    # G = decoder()
     weights = []
     for layer_name in G.synthesis.layer_names:
         weight = G.synthesis.__getattr__(layer_name).affine.weight.T
-        # print(layer_name, weight.shape)
         weights.append(weight.cpu().detach().numpy())
 
     weight = np.concatenate(weights, axis=1).astype(np.float32) # weight.shape -- (512, 4946)
@@ -170,6 +168,14 @@ def factorize(G):
     eigen_values, eigen_vectors = np.linalg.eig(weight.dot(weight.T))
     # eigen_vectors.T.shape -- (512, 512)
     # eigen_values.shape -- (512,), descend
+    # total = eigen_values.sum() -- 4946.00
+    # eigen_values[0:8].sum()/total -- 44.57%
+    # eigen_values[0:16].sum()/total -- 55.66%
+    # eigen_values[0:32].sum()/total -- 67.13%
+    # eigen_values[0:64].sum()/total -- 77.48%
+    # eigen_values[0:128].sum()/total -- 85.08%
+    # eigen_values[0:256].sum()/total -- 91.92%
+
     return eigen_vectors.T, eigen_values
 
 
@@ -184,9 +190,7 @@ def sefa(rand_seeds, output_dir="output"):
     D = decoder().to(device)
 
     boundaries, values = factorize(D)
-    attribute_id = 2
-    boundary = boundaries[attribute_id:attribute_id+1]
-    distances = np.linspace(-10, 10, 7)
+    distances = np.linspace(-10, 10, 5)
 
     start_time = time.time()
     progress_bar = tqdm(total=len(rand_seeds))
@@ -199,16 +203,20 @@ def sefa(rand_seeds, output_dir="output"):
         codes = w.detach().cpu().numpy()
         del w
         torch.cuda.empty_cache()
-
+        
         index = 0
-        for d in distances:
-            temp_code = copy.deepcopy(codes)
-            temp_code[:,[attribute_id, attribute_id + 1],:] += boundary * d
+        attribute_id = 1
 
-            with torch.no_grad():
-                output_tensor = D.synthesis(torch.from_numpy(temp_code).to(device))
-            # model_forward(D, device, temp_code)
-            save_tensor(output_tensor, f"{output_dir}/sefa_{seed:06d}_{index:02d}.png")
+        # for d in distances:
+        for attribute_id in range(9):
+            for dir in [0, 1, 2]:
+                boundary = boundaries[attribute_id:attribute_id+1]
+                temp_code = copy.deepcopy(codes)
+                temp_code[:,[attribute_id, attribute_id + 1],:] += 5.0 * boundary * (dir - 1)
+                with torch.no_grad():
+                    output_tensor = D.synthesis(torch.from_numpy(temp_code).to(device))
+                # model_forward(D, device, temp_code)
+                save_tensor(output_tensor, f"{output_dir}/sefa_{seed:06d}_{attribute_id:02d}_{dir:02d}.png")
 
             del output_tensor
             torch.cuda.empty_cache()

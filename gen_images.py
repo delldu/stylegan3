@@ -116,7 +116,7 @@ def generate_images(
     with dnnlib.util.open_url(network_pkl) as f:
         G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
 
-    # torch.save(G.state_dict(), "/tmp/image_stylegan3.pth")
+    # torch.save(G.state_dict(), "/tmp/stylegan3_decoder.pth")
     os.makedirs(outdir, exist_ok=True)
 
     # Labels.

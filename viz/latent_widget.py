@@ -74,6 +74,7 @@ class LatentWidget:
             seed = (int(seed_x) + int(seed_y) * self.step_y) & ((1 << 32) - 1)
             weight = (1 - abs(self.latent.x - seed_x)) * (1 - abs(self.latent.y - seed_y))
             if weight > 0:
+                # print("weight: ", weight)
                 viz.args.w0_seeds.append([seed, weight])
 
 #----------------------------------------------------------------------------
